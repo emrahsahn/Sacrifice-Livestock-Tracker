@@ -5,7 +5,7 @@ import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { customerSchema, type CustomerFormValues } from "@/lib/validations";
 import { addCustomer } from "@/actions/customers";
-import { PAYMENT_OPTIONS, GROUP_CATEGORIES } from "@/lib/types";
+import { PAYMENT_OPTIONS } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,11 +17,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle2, UserPlus, FolderUp } from "lucide-react";
+import { CheckCircle2, UserPlus, FolderUp, Beef } from "lucide-react";
 import { formatMoneyInputTR, formatPhoneInputTR } from "@/lib/input-format";
 import ExcelBulkImport from "@/components/excel-bulk-import";
+import { BuyukbasEkleForm } from "@/components/buyukbas-ekle-form";
+import { KUCUKBAS_GROUP_CATEGORIES } from "@/lib/types";
 
-type Mode = "bireysel" | "excel" | null;
+type Mode = "kucukbas" | "buyukbas" | "excel" | null;
 
 export default function EklePage() {
   const router = useRouter();
@@ -71,10 +73,10 @@ export default function EklePage() {
 
       {/* ── Mod Seçici ── */}
       {mode === null && (
-        <div className="grid sm:grid-cols-2 gap-4">
+        <div className="grid sm:grid-cols-3 gap-4">
           <button
-            id="mode-bireysel"
-            onClick={() => setMode("bireysel")}
+            id="mode-kucukbas"
+            onClick={() => setMode("kucukbas")}
             className="group premium-card-interactive rounded-2xl border-2 border-border bg-card p-6 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             <div
@@ -90,14 +92,37 @@ export default function EklePage() {
               />
             </div>
             <h2 className="text-lg font-bold text-foreground mb-1">
-              Bireysel Ekle
+              Küçükbaş Ekle
             </h2>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Tek bir müşteri kaydını manuel olarak forma girerek ekle.
+              Kuzu, koyun vb. tek müşteri kaydı.
             </p>
             <div
               className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold transition-transform group-hover:translate-x-1"
               style={{ color: "var(--color-primary)" }}
+            >
+              Forma git →
+            </div>
+          </button>
+
+          <button
+            id="mode-buyukbas"
+            onClick={() => setMode("buyukbas")}
+            className="group premium-card-interactive rounded-2xl border-2 border-border bg-card p-6 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <div
+              className="mb-4 inline-flex rounded-xl p-3"
+              style={{ background: "color-mix(in srgb, #7c3aed 12%, transparent)" }}
+            >
+              <Beef className="h-7 w-7" style={{ color: "#7c3aed" }} />
+            </div>
+            <h2 className="text-lg font-bold text-foreground mb-1">Büyükbaş Ekle</h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Hisse paylaşımlı hayvan ve hissedarları tek kartta.
+            </p>
+            <div
+              className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold transition-transform group-hover:translate-x-1"
+              style={{ color: "#7c3aed" }}
             >
               Forma git →
             </div>
@@ -144,7 +169,7 @@ export default function EklePage() {
       )}
 
       {/* ── Bireysel Form ── */}
-      {mode === "bireysel" && (
+      {mode === "kucukbas" && (
         <div
           className="rounded-xl border border-border bg-card p-4 md:p-6 shadow-sm"
           style={{
@@ -285,7 +310,7 @@ export default function EklePage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">— Grup Seçilmedi —</SelectItem>
-                    {GROUP_CATEGORIES.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+                    {KUCUKBAS_GROUP_CATEGORIES.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -315,6 +340,8 @@ export default function EklePage() {
           </form>
         </div>
       )}
+
+      {mode === "buyukbas" && <BuyukbasEkleForm />}
 
       {/* ── Excel Modu ── */}
       {mode === "excel" && (

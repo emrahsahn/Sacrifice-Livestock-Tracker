@@ -1,7 +1,9 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { searchByNumber, getCustomerByCompositeKey } from "@/lib/supabase/queries";
+import { searchByNumber, getCustomerByCompositeKey, searchBuyukbasByNumber } from "@/lib/supabase/queries";
+import type { BuyukbasHayvanWithHissedarlar } from "@/lib/types";
+import { BuyukbasCard } from "@/components/buyukbas-card";
 import { applyPartialPayment, updateCustomerField, updateCustomerFields } from "@/actions/customers";
 import type { Customer, CustomerKey } from "@/lib/types";
 import { PAYMENT_OPTIONS, GROUP_CATEGORIES } from "@/lib/types";
@@ -43,6 +45,7 @@ export default function GuncelledPage() {
   const [searchNum, setSearchNum] = useState("");
   const [matches, setMatches] = useState<Customer[]>([]);
   const [preview, setPreview] = useState<Customer | null>(null);
+  const [buyukbasPreview, setBuyukbasPreview] = useState<BuyukbasHayvanWithHissedarlar | null>(null);
   const [searching, setSearching] = useState(false);
   const [field, setField] = useState("type");
   const [newValue, setNewValue] = useState("");
@@ -84,15 +87,22 @@ export default function GuncelledPage() {
     setError("");
     setMatches([]);
     setPreview(null);
+    setBuyukbasPreview(null);
     syncFormFromCustomer(null);
     const supabase = createClient();
     try {
-      const res = await searchByNumber(supabase, searchNum.trim());
+      const [res, bRes] = await Promise.all([
+        searchByNumber(supabase, searchNum.trim()),
+        searchBuyukbasByNumber(supabase, searchNum.trim()),
+      ]);
       setMatches(res);
+      if (bRes.length === 1) {
+        setBuyukbasPreview(bRes[0]);
+      }
       if (res.length === 1) {
         setPreview(res[0]);
         syncFormFromCustomer(res[0]);
-      } else if (res.length === 0) {
+      } else if (res.length === 0 && bRes.length === 0) {
         setError(`"${searchNum.trim()}" hayvan numarasıyla eşleşen kayıt bulunamadı.`);
       }
     } catch (e: unknown) {
@@ -100,6 +110,13 @@ export default function GuncelledPage() {
     } finally {
       setSearching(false);
     }
+  }
+
+  async function refreshBuyukbasPreview() {
+    if (!searchNum.trim()) return;
+    const supabase = createClient();
+    const bRes = await searchBuyukbasByNumber(supabase, searchNum.trim());
+    if (bRes.length === 1) setBuyukbasPreview(bRes[0]);
   }
 
   async function refreshPreviewByKey(key: CustomerKey) {
@@ -404,12 +421,21 @@ export default function GuncelledPage() {
           <Button className="w-full" onClick={handleUpdate} disabled={submitting || !preview}>
             {submitting ? "Güncelleniyor..." : "🔄 Bilgileri Güncelle"}
           </Button>
+
+          {buyukbasPreview && !preview && (
+            <p className="text-sm text-muted-foreground border-t border-border pt-4">
+              Büyükbaş kaydı sağdaki karttan düzenlenir: alanlara tıklayarak güncelleyin, boş hisse varsa
+              &quot;Hissedar Ekle&quot; ile yeni paydaş ekleyin.
+            </p>
+          )}
         </div>
 
         {/* Sağ panel - mevcut kayıt önizleme */}
         <div className="space-y-4 min-w-0">
           <h2 className="font-semibold text-foreground">👁️ Mevcut Kayıt</h2>
-          {preview ? (
+          {buyukbasPreview && !preview ? (
+            <BuyukbasCard hayvan={buyukbasPreview} onUpdated={refreshBuyukbasPreview} />
+          ) : preview ? (
             <>
               <CustomerCard customer={preview} />
               <CustomerHistoryPanel

@@ -1,7 +1,14 @@
 "use client";
 import { useRef, useState, useCallback } from "react";
 import * as XLSX from "xlsx";
+import { importBuyukbasBulk } from "@/actions/buyukbas";
 import { addCustomersBulk, type BulkSkippedRow } from "@/actions/customers";
+import {
+  groupBuyukbasRows,
+  isBuyukbasHeaders,
+  parseBuyukbasExcelRows,
+  type BuyukbasParsedRow,
+} from "@/lib/excel-buyukbas-parser";
 import { PAYMENT_OPTIONS, GROUP_CATEGORIES } from "@/lib/types";
 import { CustomerFormValues } from "@/lib/validations";
 import { formatMoneyInputTR, formatPhoneInputTR } from "@/lib/input-format";
@@ -18,7 +25,27 @@ import {
 // ─── Excel helpers ─────────────────────────────────────────────────────────────
 
 function normH(text: string) {
-  return text.toLocaleLowerCase("tr-TR").replace(/\uFEFF/g, "").replace(/\s+/g, " ").trim();
+  return text
+    .toLocaleLowerCase("tr-TR")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/\uFEFF/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Sayfa adı: Kucukbas, Küçükbaş, buyukbas, Büyükbaş vb. */
+function findSheetByKind(
+  names: string[],
+  kind: "kucukbas" | "buyukbas"
+): string | undefined {
+  return names.find((n) => {
+    const h = normH(n);
+    if (kind === "kucukbas") {
+      return h.includes("kucuk") || h.includes("kucukbas");
+    }
+    return h.includes("buyuk") || h.includes("buyukbas");
+  });
 }
 
 interface ParsedRow {
@@ -107,6 +134,9 @@ function parseExcelRows(data: any[][]): { rows: ParsedRow[]; headerError?: strin
 interface BulkResult {
   inserted: number;
   skipped: BulkSkippedRow[];
+  buyukbasAnimals?: number;
+  buyukbasHissedarlar?: number;
+  buyukbasSkipped?: { rowIndex: number; number: string; reason: string }[];
 }
 
 export default function ExcelBulkImport() {
@@ -115,6 +145,8 @@ export default function ExcelBulkImport() {
   const [fileName, setFileName] = useState("");
   const [headerError, setHeaderError] = useState("");
   const [rows, setRows] = useState<ParsedRow[]>([]);
+  const [buyukbasRows, setBuyukbasRows] = useState<BuyukbasParsedRow[]>([]);
+  const [importMode, setImportMode] = useState<"kucukbas" | "buyukbas" | "mixed">("kucukbas");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<BulkResult | null>(null);
   const [serverError, setServerError] = useState("");
@@ -127,19 +159,81 @@ export default function ExcelBulkImport() {
     setServerError("");
     setHeaderError("");
     setRows([]);
+    setBuyukbasRows([]);
     setFileName(file.name);
-    
+
     try {
       const buffer = await file.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: "array" });
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
-      // header: 1 means generate an array of arrays
-      const data = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: "" });
-      
-      const { rows: parsed, headerError: hErr } = parseExcelRows(data);
-      if (hErr) { setHeaderError(hErr); return; }
-      setRows(parsed);
+
+      let kucukRows: ParsedRow[] = [];
+      let buyukRows: BuyukbasParsedRow[] = [];
+
+      const kucukSheet = findSheetByKind(workbook.SheetNames, "kucukbas");
+      const buyukSheet = findSheetByKind(workbook.SheetNames, "buyukbas");
+      const sheetErrors: string[] = [];
+
+      if (kucukSheet || buyukSheet) {
+        if (kucukSheet) {
+          const data = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[kucukSheet], {
+            header: 1,
+            defval: "",
+          });
+          const { rows: parsed, headerError: hErr } = parseExcelRows(data);
+          if (hErr) sheetErrors.push(`Küçükbaş (${kucukSheet}): ${hErr}`);
+          else kucukRows = parsed;
+        }
+        if (buyukSheet) {
+          const data = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[buyukSheet], {
+            header: 1,
+            defval: "",
+          });
+          const { rows: parsed, headerError: hErr } = parseBuyukbasExcelRows(data);
+          if (hErr) sheetErrors.push(`Büyükbaş (${buyukSheet}): ${hErr}`);
+          else buyukRows = parsed;
+        }
+        if (sheetErrors.length > 0 && kucukRows.length === 0 && buyukRows.length === 0) {
+          setHeaderError(sheetErrors.join(" "));
+          return;
+        }
+        if (sheetErrors.length > 0) {
+          setHeaderError(sheetErrors.join(" "));
+        }
+        setImportMode(
+          kucukRows.length > 0 && buyukRows.length > 0
+            ? "mixed"
+            : buyukRows.length > 0
+              ? "buyukbas"
+              : "kucukbas"
+        );
+      } else {
+        const firstSheetName = workbook.SheetNames[0];
+        const data = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[firstSheetName], {
+          header: 1,
+          defval: "",
+        });
+        const headers = (data[0] ?? []).map((h) => String(h ?? ""));
+        if (isBuyukbasHeaders(headers)) {
+          const { rows: parsed, headerError: hErr } = parseBuyukbasExcelRows(data);
+          if (hErr) {
+            setHeaderError(hErr);
+            return;
+          }
+          buyukRows = parsed;
+          setImportMode("buyukbas");
+        } else {
+          const { rows: parsed, headerError: hErr } = parseExcelRows(data);
+          if (hErr) {
+            setHeaderError(hErr);
+            return;
+          }
+          kucukRows = parsed;
+          setImportMode("kucukbas");
+        }
+      }
+
+      setRows(kucukRows);
+      setBuyukbasRows(buyukRows);
     } catch (err) {
       console.error(err);
       setHeaderError("Dosya okunamadı. Geçerli bir Excel (.xlsx, .xls) dosyası olduğundan emin olun.");
@@ -156,21 +250,57 @@ export default function ExcelBulkImport() {
     [processFile]
   );
 
+  const validBuyuk = buyukbasRows.filter((r) => !r.validationError);
+  const invalidBuyuk = buyukbasRows.filter((r) => r.validationError);
+
   async function handleBulkAdd() {
-    if (validRows.length === 0) return;
+    if (validRows.length === 0 && validBuyuk.length === 0) return;
     setLoading(true);
     setServerError("");
     setResult(null);
-    const payload = validRows.map((r) => r.formData);
-    const res = await addCustomersBulk(payload);
-    setLoading(false);
-    if ("error" in res) {
-      setServerError(res.error);
-    } else {
-      setResult(res);
-      setRows([]);
-      setFileName("");
+
+    let inserted = 0;
+    let skipped: BulkSkippedRow[] = [];
+    let buyukbasAnimals = 0;
+    let buyukbasHissedarlar = 0;
+    let buyukbasSkipped: { rowIndex: number; number: string; reason: string }[] = [];
+
+    if (validRows.length > 0) {
+      const payload = validRows.map((r) => r.formData);
+      const res = await addCustomersBulk(payload);
+      if ("error" in res) {
+        setServerError(res.error);
+        setLoading(false);
+        return;
+      }
+      inserted = res.inserted;
+      skipped = res.skipped;
     }
+
+    if (validBuyuk.length > 0) {
+      const groups = groupBuyukbasRows(validBuyuk);
+      const res = await importBuyukbasBulk(groups);
+      if ("error" in res) {
+        setServerError(res.error);
+        setLoading(false);
+        return;
+      }
+      buyukbasAnimals = res.insertedAnimals;
+      buyukbasHissedarlar = res.insertedHissedarlar;
+      buyukbasSkipped = res.skipped;
+    }
+
+    setLoading(false);
+    setResult({
+      inserted,
+      skipped,
+      buyukbasAnimals,
+      buyukbasHissedarlar,
+      buyukbasSkipped,
+    });
+    setRows([]);
+    setBuyukbasRows([]);
+    setFileName("");
   }
 
   return (
@@ -212,10 +342,14 @@ export default function ExcelBulkImport() {
           </p>
           <p className="text-xs text-muted-foreground mt-1">Yalnızca .xlsx, .xls formatları desteklenir</p>
         </div>
-        {fileName && !headerError && rows.length > 0 && (
+        {fileName && !headerError && (rows.length > 0 || buyukbasRows.length > 0) && (
           <div className="flex items-center gap-2 text-sm font-medium" style={{ color: "var(--color-primary)" }}>
             <FileText className="h-4 w-4" />
-            {rows.length} satır okundu
+            {importMode === "mixed"
+              ? `${rows.length} küçükbaş · ${buyukbasRows.length} büyükbaş satır`
+              : importMode === "buyukbas"
+                ? `${buyukbasRows.length} büyükbaş satır`
+                : `${rows.length} küçükbaş satır`}
           </div>
         )}
       </div>
@@ -229,99 +363,194 @@ export default function ExcelBulkImport() {
         </div>
       )}
 
-      {/* Preview table */}
-      {rows.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-foreground">Önizleme</h3>
-            <div className="flex items-center gap-3 text-xs">
-              <span className="flex items-center gap-1" style={{ color: "#22c55e" }}>
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                {validRows.length} geçerli
-              </span>
+      {/* Preview tables */}
+      {(rows.length > 0 || buyukbasRows.length > 0) && (
+        <div className="space-y-6">
+          {rows.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h3 className="text-sm font-semibold text-foreground">🐑 Küçükbaş Önizleme</h3>
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="flex items-center gap-1" style={{ color: "#22c55e" }}>
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    {validRows.length} geçerli
+                  </span>
+                  {invalidRows.length > 0 && (
+                    <span className="flex items-center gap-1" style={{ color: "var(--color-destructive)" }}>
+                      <XCircle className="h-3.5 w-3.5" />
+                      {invalidRows.length} hatalı
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full text-xs min-w-[680px]">
+                  <thead>
+                    <tr style={{ background: "var(--color-muted)" }}>
+                      {["Satır", "Hayvan No(ları)", "Cins", "Sahip", "Fiyat (TL)", "Telefon", "Durum"].map((h) => (
+                        <th key={h} className="text-left px-3 py-2 font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => {
+                      const isValid = !row.validationError;
+                      return (
+                        <tr
+                          key={row.rowIndex}
+                          className="border-t border-border"
+                          style={{
+                            background: isValid
+                              ? "color-mix(in srgb, #22c55e 5%, transparent)"
+                              : "color-mix(in srgb, var(--color-destructive) 6%, transparent)",
+                          }}
+                        >
+                          <td className="px-3 py-2 text-muted-foreground font-mono">{row.rowIndex + 1}</td>
+                          <td className="px-3 py-2 font-semibold text-foreground">
+                            {row.formData.number || <span className="text-destructive italic">—</span>}
+                          </td>
+                          <td className="px-3 py-2 text-foreground">{row.formData.type || "—"}</td>
+                          <td className="px-3 py-2 text-foreground">{row.formData.whose || "—"}</td>
+                          <td className="px-3 py-2 text-foreground">{row.formData.price || "—"}</td>
+                          <td className="px-3 py-2 text-foreground">{row.formData.phone_number || "—"}</td>
+                          <td className="px-3 py-2">
+                            {isValid ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+                                style={{ background: "color-mix(in srgb, #22c55e 15%, transparent)", color: "#16a34a" }}>
+                                <CheckCircle2 className="h-3 w-3" /> Geçerli
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+                                style={{ background: "color-mix(in srgb, var(--color-destructive) 15%, transparent)", color: "var(--color-destructive)" }}>
+                                <XCircle className="h-3 w-3" /> Hatalı
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
               {invalidRows.length > 0 && (
-                <span className="flex items-center gap-1" style={{ color: "var(--color-destructive)" }}>
-                  <XCircle className="h-3.5 w-3.5" />
-                  {invalidRows.length} hatalı (atlanacak)
-                </span>
+                <div className="rounded-lg border p-3 space-y-2"
+                  style={{ borderColor: "color-mix(in srgb, var(--color-destructive) 30%, transparent)", background: "color-mix(in srgb, var(--color-destructive) 5%, transparent)" }}>
+                  <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "var(--color-destructive)" }}>
+                    <AlertTriangle className="h-3.5 w-3.5" /> Küçükbaş hatalı satırlar:
+                  </p>
+                  {invalidRows.map((r) => (
+                    <p key={r.rowIndex} className="text-xs text-muted-foreground pl-5">
+                      • Satır {r.rowIndex + 1}: {r.validationError}
+                    </p>
+                  ))}
+                </div>
               )}
             </div>
-          </div>
+          )}
 
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-xs min-w-[680px]">
-              <thead>
-                <tr style={{ background: "var(--color-muted)" }}>
-                  {["Satır", "Hayvan No(ları)", "Cins", "Sahip", "Fiyat (TL)", "Telefon", "Durum"].map((h) => (
-                    <th key={h} className="text-left px-3 py-2 font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
-                  const isValid = !row.validationError;
-                  return (
-                    <tr
-                      key={row.rowIndex}
-                      className="border-t border-border"
-                      style={{
-                        background: isValid
-                          ? "color-mix(in srgb, #22c55e 5%, transparent)"
-                          : "color-mix(in srgb, var(--color-destructive) 6%, transparent)",
-                      }}
-                    >
-                      <td className="px-3 py-2 text-muted-foreground font-mono">{row.rowIndex + 1}</td>
-                      <td className="px-3 py-2 font-semibold text-foreground">
-                        {row.formData.number || <span className="text-destructive italic">—</span>}
-                      </td>
-                      <td className="px-3 py-2 text-foreground">{row.formData.type || "—"}</td>
-                      <td className="px-3 py-2 text-foreground">{row.formData.whose || "—"}</td>
-                      <td className="px-3 py-2 text-foreground">{row.formData.price || "—"}</td>
-                      <td className="px-3 py-2 text-foreground">{row.formData.phone_number || "—"}</td>
-                      <td className="px-3 py-2">
-                        {isValid ? (
-                          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
-                            style={{ background: "color-mix(in srgb, #22c55e 15%, transparent)", color: "#16a34a" }}>
-                            <CheckCircle2 className="h-3 w-3" /> Geçerli
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
-                            style={{ background: "color-mix(in srgb, var(--color-destructive) 15%, transparent)", color: "var(--color-destructive)" }}>
-                            <XCircle className="h-3 w-3" /> Hatalı
-                          </span>
-                        )}
-                      </td>
+          {buyukbasRows.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h3 className="text-sm font-semibold text-violet-600">🐄 Büyükbaş Önizleme</h3>
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="flex items-center gap-1" style={{ color: "#22c55e" }}>
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    {validBuyuk.length} geçerli
+                  </span>
+                  {invalidBuyuk.length > 0 && (
+                    <span className="flex items-center gap-1" style={{ color: "var(--color-destructive)" }}>
+                      <XCircle className="h-3.5 w-3.5" />
+                      {invalidBuyuk.length} hatalı
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-lg border border-violet-500/30">
+                <table className="w-full text-xs min-w-[820px]">
+                  <thead>
+                    <tr style={{ background: "color-mix(in srgb, #7c3aed 8%, var(--color-muted))" }}>
+                      {[
+                        "Satır",
+                        "Hayvan No",
+                        "Toplam Hisse",
+                        "Hayvan Fiyatı",
+                        "Sahip",
+                        "Alınan Hisse",
+                        "Telefon",
+                        "Durum",
+                      ].map((h) => (
+                        <th key={h} className="text-left px-3 py-2 font-semibold text-muted-foreground whitespace-nowrap">{h}</th>
+                      ))}
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  </thead>
+                  <tbody>
+                    {buyukbasRows.map((row) => {
+                      const isValid = !row.validationError;
+                      return (
+                        <tr
+                          key={row.rowIndex}
+                          className="border-t border-border"
+                          style={{
+                            background: isValid
+                              ? "color-mix(in srgb, #7c3aed 5%, transparent)"
+                              : "color-mix(in srgb, var(--color-destructive) 6%, transparent)",
+                          }}
+                        >
+                          <td className="px-3 py-2 text-muted-foreground font-mono">{row.rowIndex + 1}</td>
+                          <td className="px-3 py-2 font-semibold text-foreground">{row.number || "—"}</td>
+                          <td className="px-3 py-2">{row.toplam_hisse || "—"}</td>
+                          <td className="px-3 py-2">{row.hayvan_fiyati ? `${row.hayvan_fiyati}` : "—"}</td>
+                          <td className="px-3 py-2">{row.whose || "—"}</td>
+                          <td className="px-3 py-2">{row.alinan_hisse || "—"}</td>
+                          <td className="px-3 py-2">{row.phone_number || "—"}</td>
+                          <td className="px-3 py-2">
+                            {isValid ? (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+                                style={{ background: "color-mix(in srgb, #22c55e 15%, transparent)", color: "#16a34a" }}>
+                                <CheckCircle2 className="h-3 w-3" /> Geçerli
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+                                style={{ background: "color-mix(in srgb, var(--color-destructive) 15%, transparent)", color: "var(--color-destructive)" }}>
+                                <XCircle className="h-3 w-3" /> Hatalı
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
-          {/* Hatalı satır detayları */}
-          {invalidRows.length > 0 && (
-            <div className="rounded-lg border p-3 space-y-2"
-              style={{ borderColor: "color-mix(in srgb, var(--color-destructive) 30%, transparent)", background: "color-mix(in srgb, var(--color-destructive) 5%, transparent)" }}>
-              <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "var(--color-destructive)" }}>
-                <AlertTriangle className="h-3.5 w-3.5" /> Hatalı satırlar (atlanacak):
-              </p>
-              {invalidRows.map((r) => (
-                <p key={r.rowIndex} className="text-xs text-muted-foreground pl-5">
-                  • Satır {r.rowIndex + 1}: {r.validationError}
-                </p>
-              ))}
+              {invalidBuyuk.length > 0 && (
+                <div className="rounded-lg border p-3 space-y-2"
+                  style={{ borderColor: "color-mix(in srgb, var(--color-destructive) 30%, transparent)", background: "color-mix(in srgb, var(--color-destructive) 5%, transparent)" }}>
+                  <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "var(--color-destructive)" }}>
+                    <AlertTriangle className="h-3.5 w-3.5" /> Büyükbaş hatalı satırlar:
+                  </p>
+                  {invalidBuyuk.map((r) => (
+                    <p key={r.rowIndex} className="text-xs text-muted-foreground pl-5">
+                      • Satır {r.rowIndex + 1} (#{r.number || "?"}): {r.validationError}
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
           <Button
             onClick={handleBulkAdd}
-            disabled={loading || validRows.length === 0}
+            disabled={loading || (validRows.length === 0 && validBuyuk.length === 0)}
             className="w-full"
           >
             {loading ? (
               <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Ekleniyor...</>
             ) : (
-              `✅ ${validRows.length} Geçerli Kaydı Sisteme Ekle`
+              `✅ İçe Aktar (${validRows.length} küçükbaş${validBuyuk.length ? `, ${validBuyuk.length} büyükbaş satır` : ""})`
             )}
           </Button>
         </div>
@@ -347,7 +576,12 @@ export default function ExcelBulkImport() {
             <div className="rounded-lg p-3 text-center"
               style={{ background: "color-mix(in srgb, #22c55e 10%, transparent)" }}>
               <p className="text-2xl font-bold" style={{ color: "#16a34a" }}>{result.inserted}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Kayıt eklendi</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Küçükbaş eklendi</p>
+            </div>
+            <div className="rounded-lg p-3 text-center"
+              style={{ background: "color-mix(in srgb, #7c3aed 10%, transparent)" }}>
+              <p className="text-2xl font-bold text-violet-600">{result.buyukbasAnimals ?? 0}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Büyükbaş hayvan</p>
             </div>
             <div className="rounded-lg p-3 text-center"
               style={{ background: "color-mix(in srgb, var(--color-muted) 60%, transparent)" }}>
@@ -356,16 +590,23 @@ export default function ExcelBulkImport() {
             </div>
           </div>
 
-          {result.skipped.length > 0 && (
+          {(result.skipped.length > 0 || (result.buyukbasSkipped?.length ?? 0) > 0) && (
             <div className="space-y-1.5">
               <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-500" /> Atlanan satır raporu:
               </p>
               {result.skipped.map((sk) => (
-                <div key={`${sk.rowIndex}-${sk.number}`}
+                <div key={`k-${sk.rowIndex}-${sk.number}`}
                   className="rounded-md px-3 py-2 text-xs border"
                   style={{ background: "color-mix(in srgb, #f59e0b 8%, transparent)", borderColor: "color-mix(in srgb, #f59e0b 30%, transparent)", color: "var(--color-foreground)" }}>
                   ⚠️ {sk.reason}
+                </div>
+              ))}
+              {(result.buyukbasSkipped ?? []).map((sk) => (
+                <div key={`b-${sk.rowIndex}-${sk.number}`}
+                  className="rounded-md px-3 py-2 text-xs border"
+                  style={{ background: "color-mix(in srgb, #7c3aed 8%, transparent)", borderColor: "color-mix(in srgb, #7c3aed 25%, transparent)", color: "var(--color-foreground)" }}>
+                  ⚠️ Büyükbaş #{sk.number}: {sk.reason}
                 </div>
               ))}
             </div>

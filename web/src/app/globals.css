@@ -173,6 +173,10 @@ body {
   from { transform: translateY(-4px); opacity: 0; }
   to   { transform: translateY(0);    opacity: 1; }
 }
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 @layer utilities {
   .animate-in  { animation: fadeIn 0.15s ease; }
@@ -181,6 +185,7 @@ body {
   .animate-out { animation: fadeOut 0.1s ease; }
   .fade-out-0  { animation: fadeOut 0.1s ease; }
   .zoom-out-95 { animation: zoomOut 0.1s ease; }
+  .animate-fade-slide-in { animation: fadeSlideIn 0.25s ease both; }
 
   /* iOS notch / safe-area destegi */
   .safe-top    { padding-top: env(safe-area-inset-top); }
@@ -222,5 +227,8 @@ body {
   }
   .premium-card-interactive:hover {
     transform: none;
+  }
+  .animate-fade-slide-in {
+    animation: none;
   }
 }

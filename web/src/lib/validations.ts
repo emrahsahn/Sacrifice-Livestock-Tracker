@@ -87,3 +87,87 @@ export const updateFieldSchema = z.object({
   field: z.string().min(1),
   value: z.string(),
 });
+
+const singleAnimalNumberSchema = z
+  .string()
+  .min(1, "Hayvan numarası zorunludur.")
+  .transform((v) => v.trim())
+  .refine((v) => /^\d+$/.test(v), {
+    message: "Büyükbaş hayvan numarası tek bir sayı olmalıdır.",
+  });
+
+function normalizeMoneyInput(v: unknown): string {
+  if (v === undefined || v === null) return "";
+  if (typeof v === "number") {
+    return Number.isFinite(v) && v !== 0 ? String(v) : "";
+  }
+  return String(v).trim();
+}
+
+const moneyStringSchema = z
+  .union([z.string(), z.number()])
+  .optional()
+  .transform(normalizeMoneyInput)
+  .refine((v) => v === "" || Number.isFinite(parseMoneyTR(v)), {
+    message: "Geçerli bir fiyat girin.",
+  })
+  .transform((v) => {
+    if (!v || v === "") return 0;
+    const n = parseMoneyTR(v);
+    return Number.isFinite(n) ? n : 0;
+  });
+
+const requiredHayvanFiyatiSchema = z
+  .union([z.string(), z.number()])
+  .transform(normalizeMoneyInput)
+  .refine((v) => v !== "" && Number.isFinite(parseMoneyTR(v)), {
+    message: "Hayvan fiyatı zorunludur.",
+  })
+  .transform((v) => parseMoneyTR(v))
+  .refine((n) => n > 0, { message: "Hayvan fiyatı zorunludur." });
+
+function positiveIntField(label: string) {
+  return z.preprocess(
+    (val) => {
+      if (val === "" || val === null || val === undefined) return undefined;
+      if (typeof val === "number" && Number.isNaN(val)) return undefined;
+      const n = typeof val === "number" ? val : Number(val);
+      return Number.isNaN(n) ? undefined : n;
+    },
+    z
+      .number({ message: `${label} zorunludur.` })
+      .int({ message: `${label} tam sayı olmalıdır.` })
+      .min(1, { message: `${label} en az 1 olmalıdır.` })
+  );
+}
+
+export const buyukbasHissedarInputSchema = z.object({
+  whose: z.string().optional().default(""),
+  phone_number: phoneSchema,
+  alinan_hisse: positiveIntField("Alınan hisse"),
+  price: moneyStringSchema,
+  payment_method: z.string().optional().default(""),
+  payment_status: z
+    .enum(["Belirsiz", "Ödendi", "Kısmi Ödeme", "Ödenmedi"])
+    .default("Belirsiz"),
+  address: z.string().optional().default(""),
+  note: z.string().max(4000).optional().default(""),
+});
+
+export const buyukbasHayvanCreateSchema = z.object({
+  number: singleAnimalNumberSchema,
+  toplam_hisse: positiveIntField("Toplam hisse"),
+  hayvan_fiyati: requiredHayvanFiyatiSchema,
+  type: z.string().optional().default(""),
+  special: z.string().optional().default(""),
+  color_of_earring: z.string().optional().default(""),
+  color_of_animal: z.string().optional().default(""),
+  spray_paint_color: z.string().optional().default(""),
+  from_whom: z.string().optional().default(""),
+  group_category: z.string().optional().default(""),
+  note: z.string().max(4000).optional().default(""),
+  hissedarlar: z.array(buyukbasHissedarInputSchema).min(1, "En az bir hissedar ekleyin."),
+});
+
+export type BuyukbasHayvanCreateInput = z.input<typeof buyukbasHayvanCreateSchema>;
+export type BuyukbasHayvanCreateOutput = z.output<typeof buyukbasHayvanCreateSchema>;

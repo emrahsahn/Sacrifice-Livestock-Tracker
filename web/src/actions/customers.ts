@@ -3,8 +3,12 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { customerSchema } from "@/lib/validations";
 import { parseMoneyTR } from "@/lib/input-format";
+import {
+  assertNumbersAvailable,
+  tokensFromKucukbasNumber,
+} from "@/lib/animal-number-check";
 import { TABLE, type CustomerKey } from "@/lib/types";
-import { generateRandomId, normalizePhone } from "@/lib/utils";
+import { generateRandomId, normalizePhone, parseAnimalNumbers } from "@/lib/utils";
 
 function isMissingAgreedTotalDbError(message: string): boolean {
   return /agreed_total/i.test(message) && /does not exist|column/i.test(message);
@@ -37,6 +41,13 @@ export async function addCustomer(formData: unknown) {
 
   const data = parsed.data;
   const supabase = await createClient();
+
+  const numConflict = await assertNumbersAvailable(
+    supabase,
+    tokensFromKucukbasNumber(data.number),
+    "kucukbas"
+  );
+  if (numConflict) return { error: numConflict };
 
   // Telefon opsiyonel: boşsa "" olarak saklanır. Dolu girildiyse normalize edilmiş
   // 11 haneli formatı bekleriz (zod schema kontrolü zaten yapıldı).
@@ -123,6 +134,17 @@ export async function addCustomersBulk(
     }
 
     const data = parsed.data;
+
+    const numConflict = await assertNumbersAvailable(
+      supabase,
+      tokensFromKucukbasNumber(data.number),
+      "kucukbas"
+    );
+    if (numConflict) {
+      skipped.push({ rowIndex: i, number: data.number, reason: numConflict });
+      continue;
+    }
+
     // Telefon opsiyonel: boş veya geçersizse boş string saklanır, satır atlanmaz.
     const phone = normalizePhone(data.phone_number);
 
@@ -300,6 +322,19 @@ export async function updateCustomerFields(
   const supabase = await createClient();
 
   const patch: Record<string, unknown> = { ...updates };
+
+  if (typeof patch.number === "string") {
+    const normalized = parseAnimalNumbers(patch.number as string).join(", ");
+    const numConflict = await assertNumbersAvailable(
+      supabase,
+      tokensFromKucukbasNumber(normalized),
+      "kucukbas",
+      { source: "kucukbas", random_id: key.random_id, number: key.number }
+    );
+    if (numConflict) return { error: numConflict };
+    patch.number = normalized;
+  }
+
   if (typeof patch.phone_number === "string") {
     const trimmed = patch.phone_number.trim();
     if (trimmed === "") {
@@ -366,6 +401,14 @@ export async function updateCustomerField(
       .map((s) => s.trim())
       .filter((s) => s.length > 0)
       .join(", ");
+
+    const numConflict = await assertNumbersAvailable(
+      supabase,
+      tokensFromKucukbasNumber(String(finalValue)),
+      "kucukbas",
+      { source: "kucukbas", random_id: key.random_id, number: key.number }
+    );
+    if (numConflict) return { error: numConflict };
   }
 
   const { error } = await supabase
