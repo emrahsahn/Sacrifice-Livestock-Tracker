@@ -2,10 +2,17 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  searchByNumber, searchByOwner, searchByNumberAndOwner,
-  searchByType, searchByPhone,
+  searchByNumber,
+  searchByOwner,
+  searchByNumberAndOwner,
+  searchByType,
+  searchByPhone,
+  searchBuyukbasByNumber,
+  searchBuyukbasByOwner,
+  searchBuyukbasByPhone,
 } from "@/lib/supabase/queries";
-import type { Customer } from "@/lib/types";
+import type { BuyukbasHayvanWithHissedarlar, Customer } from "@/lib/types";
+import { BuyukbasCard } from "@/components/buyukbas-card";
 import { CustomerCard } from "@/components/customer-card";
 import { CustomerHistoryPanel } from "@/components/customer-history-panel";
 import { Button } from "@/components/ui/button";
@@ -31,27 +38,43 @@ export default function SorgulaPage() {
   const [kind, setKind] = useState("");
   const [phone, setPhone] = useState("");
   const [results, setResults] = useState<Customer[] | null>(null);
+  const [buyukbasResults, setBuyukbasResults] = useState<BuyukbasHayvanWithHissedarlar[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setBuyukbasResults(null);
+    setResults(null);
     setLoading(true);
     const supabase = createClient();
 
     try {
       let res: Customer[] = [];
+      let bRes: BuyukbasHayvanWithHissedarlar[] = [];
 
       if (qType === "numara") {
         if (!num.trim()) { setError("Hayvan numarasını girin."); setLoading(false); return; }
-        res = await searchByNumber(supabase, num.trim());
+        const [k, b] = await Promise.all([
+          searchByNumber(supabase, num.trim()),
+          searchBuyukbasByNumber(supabase, num.trim()),
+        ]);
+        res = k;
+        bRes = b;
       } else if (qType === "sahip") {
         if (!owner.trim()) { setError("Sahip adını girin."); setLoading(false); return; }
-        res = await searchByOwner(supabase, owner.trim());
+        const [k, b] = await Promise.all([
+          searchByOwner(supabase, owner.trim()),
+          searchBuyukbasByOwner(supabase, owner.trim()),
+        ]);
+        res = k;
+        bRes = b;
       } else if (qType === "numara_sahip") {
         if (!num.trim() || !owner.trim()) { setError("Her iki alanı da doldurun."); setLoading(false); return; }
         res = await searchByNumberAndOwner(supabase, num.trim(), owner.trim());
+        const bAll = await searchBuyukbasByOwner(supabase, owner.trim());
+        bRes = bAll.filter((h) => h.number === num.trim());
       } else if (qType === "tur") {
         if (!kind.trim()) { setError("Hayvan türünü girin."); setLoading(false); return; }
         res = await searchByType(supabase, kind.trim());
@@ -63,10 +86,16 @@ export default function SorgulaPage() {
           setLoading(false);
           return;
         }
-        res = await searchByPhone(supabase, normalized);
+        const [k, b] = await Promise.all([
+          searchByPhone(supabase, normalized),
+          searchBuyukbasByPhone(supabase, normalized),
+        ]);
+        res = k;
+        bRes = b;
       }
 
       setResults(res);
+      setBuyukbasResults(bRes);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Bir hata oluştu.");
     } finally {
@@ -86,12 +115,12 @@ export default function SorgulaPage() {
           📋 Sorgu Sonuçları
         </h2>
 
-        <div className="rounded-xl border border-border bg-card p-4 md:p-6 shadow-sm space-y-5 h-fit w-full min-w-0 self-start lg:col-start-1 lg:row-start-2">
+        <div className="group premium-card-interactive animate-fade-slide-in rounded-xl border-2 border-border bg-card p-4 md:p-6 space-y-5 h-fit w-full min-w-0 self-start lg:col-start-1 lg:row-start-2">
           <form onSubmit={handleSearch} className="space-y-4">
             <div className="space-y-2">
               <h2 className="font-semibold text-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 lg:col-start-1 lg:row-start-1" aria-hidden>🎯 Sorgu Detayları </h2>
               <Label>Sorgulama Yöntemi</Label>
-              <Select value={qType} onValueChange={(v) => { setQType(v as QueryType); setResults(null); }}>
+              <Select value={qType} onValueChange={(v) => { setQType(v as QueryType); setResults(null); setBuyukbasResults(null); }}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -140,21 +169,24 @@ export default function SorgulaPage() {
         </div>
 
         <div className="space-y-4 min-w-0 lg:col-start-2 lg:row-start-2">
-          {results === null ? (
+          {results === null && buyukbasResults === null ? (
             <div className="rounded-xl border border-dashed border-border p-10 text-center text-muted-foreground">
               Sorguyu çalıştırarak sonuçları burada görüntüleyin.
             </div>
-          ) : results.length === 0 ? (
+          ) : (results?.length ?? 0) === 0 && (buyukbasResults?.length ?? 0) === 0 ? (
             <div className="rounded-xl border border-dashed border-border p-10 text-center text-muted-foreground">
               Eşleşen kayıt bulunamadı.
             </div>
           ) : (
             <>
               <p className="text-sm text-muted-foreground">
-                <strong>{results.length}</strong> kayıt bulundu.
+                <strong>{(results?.length ?? 0) + (buyukbasResults?.length ?? 0)}</strong> sonuç
               </p>
               <div className="space-y-6">
-                {results.map((c, i) => (
+                {(buyukbasResults ?? []).map((h) => (
+                  <BuyukbasCard key={h.number} hayvan={h} />
+                ))}
+                {(results ?? []).map((c, i) => (
                   <div
                     key={c.random_id || `${c.phone_number}-${c.number}-${i}`}
                     className="space-y-3"

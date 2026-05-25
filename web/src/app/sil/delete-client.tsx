@@ -2,9 +2,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { searchByNumber } from "@/lib/supabase/queries";
-import type { Customer } from "@/lib/types";
+import { searchByNumber, searchBuyukbasByNumber } from "@/lib/supabase/queries";
+import type { BuyukbasHayvanWithHissedarlar, Customer } from "@/lib/types";
 import { deleteCustomer } from "@/actions/customers";
+import { deleteBuyukbasHayvan } from "@/actions/buyukbas";
+import { BuyukbasCard } from "@/components/buyukbas-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +35,7 @@ export function DeleteClient() {
   const [searchNum, setSearchNum] = useState("");
   const [matches, setMatches] = useState<Customer[]>([]);
   const [preview, setPreview] = useState<Customer | null>(null);
+  const [buyukbasPreview, setBuyukbasPreview] = useState<BuyukbasHayvanWithHissedarlar | null>(null);
   const [searching, setSearching] = useState(false);
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -44,13 +47,17 @@ export function DeleteClient() {
     setError("");
     setMatches([]);
     setPreview(null);
+    setBuyukbasPreview(null);
     const supabase = createClient();
     try {
-      const res = await searchByNumber(supabase, searchNum.trim());
+      const [res, bRes] = await Promise.all([
+        searchByNumber(supabase, searchNum.trim()),
+        searchBuyukbasByNumber(supabase, searchNum.trim()),
+      ]);
       setMatches(res);
-      if (res.length === 1) {
-        setPreview(res[0]);
-      } else if (res.length === 0) {
+      if (bRes.length === 1) setBuyukbasPreview(bRes[0]);
+      if (res.length === 1) setPreview(res[0]);
+      if (res.length === 0 && bRes.length === 0) {
         setError(`"${searchNum.trim()}" hayvan numarasıyla eşleşen kayıt bulunamadı.`);
       }
     } catch (e: unknown) {
@@ -61,18 +68,36 @@ export function DeleteClient() {
   }
 
   async function handleDelete() {
-    if (!preview) return;
+    if (!preview && !buyukbasPreview) return;
     setDeleting(true);
     setError("");
+
+    if (buyukbasPreview) {
+      const result = await deleteBuyukbasHayvan(buyukbasPreview.number);
+      if (result?.error) {
+        setError(result.error);
+        setDeleting(false);
+        return;
+      }
+      setOpen(false);
+      setBuyukbasPreview(null);
+      setPreview(null);
+      setMatches([]);
+      setSearchNum("");
+      router.refresh();
+      setDeleting(false);
+      return;
+    }
+
     const result = await deleteCustomer({
-      random_id: preview.random_id,
-      number: preview.number,
+      random_id: preview!.random_id,
+      number: preview!.number,
     });
     if (result?.error) {
       setError(result.error);
       setDeleting(false);
     } else {
-      clearPaymentAutoHistory(preview.random_id);
+      clearPaymentAutoHistory(preview!.random_id);
       setOpen(false);
       setPreview(null);
       setMatches([]);
@@ -92,7 +117,7 @@ export function DeleteClient() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-card p-4 md:p-6 shadow-sm space-y-4">
+      <div className="group premium-card-interactive animate-fade-slide-in rounded-xl border-2 border-border bg-card p-4 md:p-6 space-y-4">
         <div className="space-y-2">
           <Label htmlFor="sil-search-num">Hayvan numarası</Label>
           <div className="flex gap-2">
@@ -148,14 +173,23 @@ export function DeleteClient() {
           </div>
         )}
 
-        {preview && (
+        {buyukbasPreview && (
           <>
-            <p className="text-xs text-muted-foreground">Silinecek kayıt özeti:</p>
+            <p className="text-xs text-muted-foreground">
+              Silinecek büyükbaş hayvan ({buyukbasPreview.hissedarlar.length} hissedar ile birlikte):
+            </p>
+            <BuyukbasCard hayvan={buyukbasPreview} editable={false} />
+          </>
+        )}
+
+        {preview && !buyukbasPreview && (
+          <>
+            <p className="text-xs text-muted-foreground">Silinecek küçükbaş kayıt özeti:</p>
             <CustomerCard customer={preview} />
           </>
         )}
 
-        {!preview && matches.length === 0 && !error && !searching && (
+        {!preview && !buyukbasPreview && matches.length === 0 && !error && !searching && (
           <p className="text-sm text-muted-foreground text-center py-6">
             Numarayı girip arama yapın.
           </p>
@@ -167,7 +201,7 @@ export function DeleteClient() {
           type="button"
           variant="destructive"
           className="w-full"
-          disabled={!preview}
+          disabled={!preview && !buyukbasPreview}
           onClick={() => setOpen(true)}
         >
           <Trash2 className="h-4 w-4 mr-2" />
@@ -180,9 +214,16 @@ export function DeleteClient() {
           <DialogHeader>
             <DialogTitle className="text-destructive">Emin misiniz?</DialogTitle>
             <DialogDescription>
-              {preview && (
+              {buyukbasPreview && (
                 <>
-                  <strong>#{preview.number}</strong> numaralı kayıt ({preview.whose || "isimsiz"} ·{" "}
+                  Büyükbaş <strong>#{buyukbasPreview.number}</strong> ve{" "}
+                  <strong>{buyukbasPreview.hissedarlar.length}</strong> hissedar kaydı kalıcı olarak
+                  silinecektir. Bu işlem geri alınamaz.
+                </>
+              )}
+              {preview && !buyukbasPreview && (
+                <>
+                  <strong>#{preview.number}</strong> numaralı küçükbaş kayıt ({preview.whose || "isimsiz"} ·{" "}
                   {formatPhoneDisplay(preview.phone_number) || "telefonsuz"}) kalıcı olarak silinecektir.
                   Bu işlem geri alınamaz.
                 </>
@@ -193,7 +234,11 @@ export function DeleteClient() {
             <Button variant="outline" onClick={() => setOpen(false)}>
               Vazgeç
             </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting || !preview}>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleting || (!preview && !buyukbasPreview)}
+            >
               {deleting ? "Siliniyor..." : "Evet, Kalıcı Olarak Sil"}
             </Button>
           </DialogFooter>

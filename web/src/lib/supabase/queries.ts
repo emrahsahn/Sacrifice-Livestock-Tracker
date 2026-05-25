@@ -1,6 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Customer, CustomerKey, HistoryEntry } from "@/lib/types";
-import { HISTORY_TABLE, TABLE } from "@/lib/types";
+import type {
+  BuyukbasHayvan,
+  BuyukbasHayvanWithHissedarlar,
+  BuyukbasHissedar,
+  Customer,
+  CustomerKey,
+  HistoryEntry,
+} from "@/lib/types";
+import { BUYUKBAS_HISSEDAR_TABLE, BUYUKBAS_TABLE, HISTORY_TABLE, TABLE } from "@/lib/types";
 import {
   animalNumbersInclude,
   compareHayvanNumarasi,
@@ -244,6 +251,156 @@ export async function getGroupStats(supabase: SupabaseClient) {
     groupMap[key].count += 1;
     groupMap[key].animalCount += countAnimals(String(row.number ?? ""));
     groupMap[key].total += Number(row.price ?? 0);
+  }
+
+  return groupMap;
+}
+
+// ─── Büyükbaş ─────────────────────────────────────────────────────────────────
+
+export async function getBuyukbasHayvanlar(
+  supabase: SupabaseClient
+): Promise<BuyukbasHayvanWithHissedarlar[]> {
+  const { data: hayvanlar, error: hErr } = await supabase
+    .from(BUYUKBAS_TABLE)
+    .select("*");
+  if (hErr) throw new Error(hErr.message);
+
+  const { data: hissedarlar, error: hsErr } = await supabase
+    .from(BUYUKBAS_HISSEDAR_TABLE)
+    .select("*");
+  if (hsErr) throw new Error(hsErr.message);
+
+  const byHayvan = new Map<string, BuyukbasHissedar[]>();
+  for (const h of (hissedarlar ?? []) as BuyukbasHissedar[]) {
+    const list = byHayvan.get(h.hayvan_number) ?? [];
+    list.push(h);
+    byHayvan.set(h.hayvan_number, list);
+  }
+
+  const rows = (hayvanlar ?? []) as BuyukbasHayvan[];
+  rows.sort((a, b) => compareHayvanNumarasi(a.number, b.number));
+
+  return rows.map((hayvan) => ({
+    ...hayvan,
+    hissedarlar: byHayvan.get(hayvan.number) ?? [],
+  }));
+}
+
+export async function getBuyukbasHayvanWithHissedarlar(
+  supabase: SupabaseClient,
+  number: string
+): Promise<BuyukbasHayvanWithHissedarlar | null> {
+  const token = number.trim();
+  const { data: hayvan, error: hErr } = await supabase
+    .from(BUYUKBAS_TABLE)
+    .select("*")
+    .eq("number", token)
+    .maybeSingle();
+  if (hErr) throw new Error(hErr.message);
+  if (!hayvan) return null;
+
+  const { data: hissedarlar, error: hsErr } = await supabase
+    .from(BUYUKBAS_HISSEDAR_TABLE)
+    .select("*")
+    .eq("hayvan_number", token);
+  if (hsErr) throw new Error(hsErr.message);
+
+  return {
+    ...(hayvan as BuyukbasHayvan),
+    hissedarlar: (hissedarlar ?? []) as BuyukbasHissedar[],
+  };
+}
+
+export async function searchBuyukbasByNumber(
+  supabase: SupabaseClient,
+  number: string
+): Promise<BuyukbasHayvanWithHissedarlar[]> {
+  const token = number.trim();
+  if (!token) return [];
+  const hayvan = await getBuyukbasHayvanWithHissedarlar(supabase, token);
+  return hayvan ? [hayvan] : [];
+}
+
+export async function searchBuyukbasByOwner(
+  supabase: SupabaseClient,
+  whose: string
+): Promise<BuyukbasHayvanWithHissedarlar[]> {
+  const w = whose.trim().toLocaleLowerCase("tr-TR");
+  if (!w) return [];
+  const all = await getBuyukbasHayvanlar(supabase);
+  return all.filter((h) =>
+    h.hissedarlar.some((hs) =>
+      String(hs.whose ?? "").toLocaleLowerCase("tr-TR").includes(w)
+    )
+  );
+}
+
+export async function searchBuyukbasByPhone(
+  supabase: SupabaseClient,
+  phone: string
+): Promise<BuyukbasHayvanWithHissedarlar[]> {
+  const normalized = normalizePhone(phone);
+  const target = normalized || String(phone ?? "").replace(/\D/g, "");
+  if (!target) return [];
+  const { data, error } = await supabase
+    .from(BUYUKBAS_HISSEDAR_TABLE)
+    .select("hayvan_number")
+    .ilike("phone_number", `%${target}%`);
+  if (error) throw new Error(error.message);
+  const numbers = [...new Set((data ?? []).map((r) => r.hayvan_number as string))];
+  const results: BuyukbasHayvanWithHissedarlar[] = [];
+  for (const num of numbers) {
+    const h = await getBuyukbasHayvanWithHissedarlar(supabase, num);
+    if (h) results.push(h);
+  }
+  return results;
+}
+
+export async function getBuyukbasStats(supabase: SupabaseClient) {
+  const all = await getBuyukbasHayvanlar(supabase);
+  let totalHisse = 0;
+  let soldHisse = 0;
+  /** Hayvan başına sözleşme tutarı (hayvan_fiyati toplamı). */
+  let totalHayvanFiyati = 0;
+  /** Hissedarların güncel kalan borçları (price, Ödendi hariç). */
+  let unpaidTotal = 0;
+  let unpaidCount = 0;
+
+  for (const h of all) {
+    totalHisse += Number(h.toplam_hisse ?? 0);
+    totalHayvanFiyati += Number(h.hayvan_fiyati ?? 0);
+    for (const hs of h.hissedarlar) {
+      soldHisse += Number(hs.alinan_hisse ?? 0);
+      if (hs.payment_status !== "Ödendi") {
+        unpaidTotal += Number(hs.price ?? 0);
+        unpaidCount += 1;
+      }
+    }
+  }
+
+  return {
+    animalCount: all.length,
+    totalHisse,
+    soldHisse,
+    freeHisse: Math.max(0, totalHisse - soldHisse),
+    totalHayvanFiyati,
+    unpaidTotal,
+    unpaidCount,
+    collectedTotal: Math.max(0, totalHayvanFiyati - unpaidTotal),
+  };
+}
+
+export async function getBuyukbasGroupStats(supabase: SupabaseClient) {
+  const all = await getBuyukbasHayvanlar(supabase);
+  const groupMap: Record<string, { count: number; animalCount: number; total: number }> = {};
+
+  for (const h of all) {
+    const key = h.group_category || "__grupsuz__";
+    if (!groupMap[key]) groupMap[key] = { count: 0, animalCount: 0, total: 0 };
+    groupMap[key].animalCount += 1;
+    groupMap[key].count += h.hissedarlar.length;
+    groupMap[key].total += Number(h.hayvan_fiyati ?? 0);
   }
 
   return groupMap;
