@@ -1,6 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { requireSession } from "@/lib/require-session";
 import { customerSchema } from "@/lib/validations";
 import { parseMoneyTR } from "@/lib/input-format";
 import {
@@ -34,6 +35,7 @@ function revalidateAll() {
 // ─── Tekil ekleme ──────────────────────────────────────────────────────────────
 
 export async function addCustomer(formData: unknown) {
+  await requireSession();
   const parsed = customerSchema.safeParse(formData);
   if (!parsed.success) {
     return { error: parsed.error.issues.map((i) => i.message).join(", ") };
@@ -109,6 +111,7 @@ export interface BulkImportResult {
 export async function addCustomersBulk(
   rows: unknown[]
 ): Promise<BulkImportResult | { error: string }> {
+  await requireSession();
   if (!Array.isArray(rows) || rows.length === 0) {
     return { error: "İçe aktarılacak satır bulunamadı." };
   }
@@ -205,6 +208,7 @@ export async function applyPartialPayment(
   paidAmountRaw: string,
   manualNote?: string
 ) {
+  await requireSession();
   const paidRaw = parseMoneyTR(String(paidAmountRaw).trim());
   const paid = Math.round(paidRaw * 100) / 100;
   if (!Number.isFinite(paid) || paid <= 0) {
@@ -319,6 +323,7 @@ export async function updateCustomerFields(
   key: CustomerKey,
   updates: Record<string, unknown>
 ) {
+  await requireSession();
   const supabase = await createClient();
 
   const patch: Record<string, unknown> = { ...updates };
@@ -372,6 +377,7 @@ export async function updateCustomerField(
   field: string,
   value: string
 ) {
+  await requireSession();
   const supabase = await createClient();
 
   let finalValue: string | number = value;
@@ -431,6 +437,7 @@ export async function updateCustomerField(
 // ─── Silme ─────────────────────────────────────────────────────────────────────
 
 export async function deleteCustomer(key: CustomerKey) {
+  await requireSession();
   const supabase = await createClient();
   const { error } = await supabase
     .from(TABLE)

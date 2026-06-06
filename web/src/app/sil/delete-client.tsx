@@ -1,8 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { searchByNumber, searchBuyukbasByNumber } from "@/lib/supabase/queries";
+import { searchByNumberPreview } from "@/actions/search";
 import type { BuyukbasHayvanWithHissedarlar, Customer } from "@/lib/types";
 import { deleteCustomer } from "@/actions/customers";
 import { deleteBuyukbasHayvan } from "@/actions/buyukbas";
@@ -48,12 +47,13 @@ export function DeleteClient() {
     setMatches([]);
     setPreview(null);
     setBuyukbasPreview(null);
-    const supabase = createClient();
     try {
-      const [res, bRes] = await Promise.all([
-        searchByNumber(supabase, searchNum.trim()),
-        searchBuyukbasByNumber(supabase, searchNum.trim()),
-      ]);
+      const result = await searchByNumberPreview(searchNum.trim());
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
+      const { customers: res, buyukbas: bRes } = result;
       setMatches(res);
       if (bRes.length === 1) setBuyukbasPreview(bRes[0]);
       if (res.length === 1) setPreview(res[0]);
