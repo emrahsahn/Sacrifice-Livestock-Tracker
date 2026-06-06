@@ -1,7 +1,9 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { searchByNumber, getCustomerByCompositeKey, searchBuyukbasByNumber } from "@/lib/supabase/queries";
+import {
+  fetchCustomerByKey,
+  searchByNumberPreview,
+} from "@/actions/search";
 import type { BuyukbasHayvanWithHissedarlar } from "@/lib/types";
 import { BuyukbasCard } from "@/components/buyukbas-card";
 import { applyPartialPayment, updateCustomerField, updateCustomerFields } from "@/actions/customers";
@@ -89,12 +91,13 @@ export default function GuncelledPage() {
     setPreview(null);
     setBuyukbasPreview(null);
     syncFormFromCustomer(null);
-    const supabase = createClient();
     try {
-      const [res, bRes] = await Promise.all([
-        searchByNumber(supabase, searchNum.trim()),
-        searchBuyukbasByNumber(supabase, searchNum.trim()),
-      ]);
+      const result = await searchByNumberPreview(searchNum.trim());
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
+      const { customers: res, buyukbas: bRes } = result;
       setMatches(res);
       if (bRes.length === 1) {
         setBuyukbasPreview(bRes[0]);
@@ -114,15 +117,14 @@ export default function GuncelledPage() {
 
   async function refreshBuyukbasPreview() {
     if (!searchNum.trim()) return;
-    const supabase = createClient();
-    const bRes = await searchBuyukbasByNumber(supabase, searchNum.trim());
-    if (bRes.length === 1) setBuyukbasPreview(bRes[0]);
+    const result = await searchByNumberPreview(searchNum.trim());
+    if ("error" in result) return;
+    if (result.buyukbas.length === 1) setBuyukbasPreview(result.buyukbas[0]);
   }
 
   async function refreshPreviewByKey(key: CustomerKey) {
-    const supabase = createClient();
     try {
-      const next = await getCustomerByCompositeKey(supabase, key);
+      const next = await fetchCustomerByKey(key);
       setPreview(next);
       syncFormFromCustomer(next);
     } catch {

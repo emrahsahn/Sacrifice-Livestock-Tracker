@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { getCustomerHistory } from "@/lib/supabase/queries";
+import { fetchCustomerHistory } from "@/actions/search";
 import type { Customer, CustomerSnapshot, HistoryEntry } from "@/lib/types";
 import { formatPrice } from "@/lib/utils";
 import { phoneToTelHref } from "@/lib/input-format";
@@ -161,12 +160,16 @@ export function CustomerHistoryPanel({
   useEffect(() => {
     if (!hayvanNumber) return;
     let cancelled = false;
-    const supabase = createClient();
-    getCustomerHistory(supabase, hayvanNumber, randomId ?? null)
+    fetchCustomerHistory(hayvanNumber, randomId ?? null)
       .then((data) => {
         if (!cancelled) {
-          setErr("");
-          setRows(data);
+          if ("error" in data) {
+            setErr(data.error);
+            setRows([]);
+          } else {
+            setErr("");
+            setRows(data);
+          }
         }
       })
       .catch((e: unknown) => {

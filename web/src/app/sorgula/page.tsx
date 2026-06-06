@@ -1,16 +1,6 @@
 "use client";
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import {
-  searchByNumber,
-  searchByOwner,
-  searchByNumberAndOwner,
-  searchByType,
-  searchByPhone,
-  searchBuyukbasByNumber,
-  searchBuyukbasByOwner,
-  searchBuyukbasByPhone,
-} from "@/lib/supabase/queries";
+import { runCustomerSearch, type SearchQueryType } from "@/actions/search";
 import type { BuyukbasHayvanWithHissedarlar, Customer } from "@/lib/types";
 import { BuyukbasCard } from "@/components/buyukbas-card";
 import { CustomerCard } from "@/components/customer-card";
@@ -21,9 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search } from "lucide-react";
 
-type QueryType = "numara" | "sahip" | "numara_sahip" | "tur" | "telefon";
-
-const queryOptions: { value: QueryType; label: string }[] = [
+const queryOptions: { value: SearchQueryType; label: string }[] = [
   { value: "numara", label: "Numaraya Göre" },
   { value: "sahip", label: "Sahibe Göre" },
   { value: "numara_sahip", label: "Numara ve Sahibe Göre" },
@@ -32,7 +20,7 @@ const queryOptions: { value: QueryType; label: string }[] = [
 ];
 
 export default function SorgulaPage() {
-  const [qType, setQType] = useState<QueryType>("numara");
+  const [qType, setQType] = useState<SearchQueryType>("numara");
   const [num, setNum] = useState("");
   const [owner, setOwner] = useState("");
   const [kind, setKind] = useState("");
@@ -48,54 +36,22 @@ export default function SorgulaPage() {
     setBuyukbasResults(null);
     setResults(null);
     setLoading(true);
-    const supabase = createClient();
 
     try {
-      let res: Customer[] = [];
-      let bRes: BuyukbasHayvanWithHissedarlar[] = [];
+      const result = await runCustomerSearch(qType, {
+        num,
+        owner,
+        kind,
+        phone,
+      });
 
-      if (qType === "numara") {
-        if (!num.trim()) { setError("Hayvan numarasını girin."); setLoading(false); return; }
-        const [k, b] = await Promise.all([
-          searchByNumber(supabase, num.trim()),
-          searchBuyukbasByNumber(supabase, num.trim()),
-        ]);
-        res = k;
-        bRes = b;
-      } else if (qType === "sahip") {
-        if (!owner.trim()) { setError("Sahip adını girin."); setLoading(false); return; }
-        const [k, b] = await Promise.all([
-          searchByOwner(supabase, owner.trim()),
-          searchBuyukbasByOwner(supabase, owner.trim()),
-        ]);
-        res = k;
-        bRes = b;
-      } else if (qType === "numara_sahip") {
-        if (!num.trim() || !owner.trim()) { setError("Her iki alanı da doldurun."); setLoading(false); return; }
-        res = await searchByNumberAndOwner(supabase, num.trim(), owner.trim());
-        const bAll = await searchBuyukbasByOwner(supabase, owner.trim());
-        bRes = bAll.filter((h) => h.number === num.trim());
-      } else if (qType === "tur") {
-        if (!kind.trim()) { setError("Hayvan türünü girin."); setLoading(false); return; }
-        res = await searchByType(supabase, kind.trim());
-      } else if (qType === "telefon") {
-        const clean = phone.replace(/[\s\-]/g, "");
-        const normalized = clean.length === 10 && !clean.startsWith("0") ? "0" + clean : clean;
-        if (!/^\d{11}$/.test(normalized)) {
-          setError("Geçerli bir telefon numarası girin. Örn: 0532 123 45 67");
-          setLoading(false);
-          return;
-        }
-        const [k, b] = await Promise.all([
-          searchByPhone(supabase, normalized),
-          searchBuyukbasByPhone(supabase, normalized),
-        ]);
-        res = k;
-        bRes = b;
+      if ("error" in result) {
+        setError(result.error);
+        return;
       }
 
-      setResults(res);
-      setBuyukbasResults(bRes);
+      setResults(result.customers);
+      setBuyukbasResults(result.buyukbas);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Bir hata oluştu.");
     } finally {
@@ -120,7 +76,7 @@ export default function SorgulaPage() {
             <div className="space-y-2">
               <h2 className="font-semibold text-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 lg:col-start-1 lg:row-start-1" aria-hidden>🎯 Sorgu Detayları </h2>
               <Label>Sorgulama Yöntemi</Label>
-              <Select value={qType} onValueChange={(v) => { setQType(v as QueryType); setResults(null); setBuyukbasResults(null); }}>
+              <Select value={qType} onValueChange={(v) => { setQType(v as SearchQueryType); setResults(null); setBuyukbasResults(null); }}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { requireSession } from "@/lib/require-session";
 import { assertNumbersAvailable } from "@/lib/animal-number-check";
 import { parseMoneyTR } from "@/lib/input-format";
 import { buyukbasHayvanCreateSchema } from "@/lib/validations";
@@ -44,6 +45,7 @@ async function getUsedShares(
 }
 
 export async function createBuyukbasHayvan(formData: unknown) {
+  await requireSession();
   const parsed = buyukbasHayvanCreateSchema.safeParse(formData);
   if (!parsed.success) {
     return { error: parsed.error.issues.map((i) => i.message).join(", ") };
@@ -126,6 +128,7 @@ export async function addBuyukbasHissedar(
     note?: string;
   }
 ) {
+  await requireSession();
   const supabase = await createClient();
   const { data: hayvan, error: hErr } = await supabase
     .from(BUYUKBAS_TABLE)
@@ -168,6 +171,7 @@ export async function updateBuyukbasHayvan(
   number: string,
   patch: Record<string, unknown>
 ) {
+  await requireSession();
   const supabase = await createClient();
   const newNumber = typeof patch.number === "string" ? patch.number.trim() : number;
 
@@ -256,6 +260,7 @@ export async function updateBuyukbasHissedar(
   id: string,
   patch: Record<string, unknown>
 ) {
+  await requireSession();
   const supabase = await createClient();
   const { data: row, error: rErr } = await supabase
     .from(BUYUKBAS_HISSEDAR_TABLE)
@@ -306,6 +311,7 @@ export async function applyBuyukbasPartialPayment(
   paidAmountRaw: string,
   manualNote?: string
 ) {
+  await requireSession();
   const paidRaw = parseMoneyTR(String(paidAmountRaw).trim());
   const paid = Math.round(paidRaw * 100) / 100;
   if (!Number.isFinite(paid) || paid <= 0) {
@@ -374,6 +380,7 @@ export async function applyBuyukbasPartialPayment(
 }
 
 export async function deleteBuyukbasHayvan(number: string) {
+  await requireSession();
   const supabase = await createClient();
   const { error } = await supabase.from(BUYUKBAS_TABLE).delete().eq("number", number);
   if (error) return { error: error.message };
@@ -382,6 +389,7 @@ export async function deleteBuyukbasHayvan(number: string) {
 }
 
 export async function deleteBuyukbasHissedar(id: string) {
+  await requireSession();
   const supabase = await createClient();
   const { error } = await supabase.from(BUYUKBAS_HISSEDAR_TABLE).delete().eq("id", id);
   if (error) return { error: error.message };
@@ -429,6 +437,7 @@ export async function importBuyukbasBulk(
     rowIndices: number[];
   }>
 ): Promise<BuyukbasBulkImportResult | { error: string }> {
+  await requireSession();
   const supabase = await createClient();
   const skipped: BuyukbasBulkSkippedRow[] = [];
   let insertedAnimals = 0;
