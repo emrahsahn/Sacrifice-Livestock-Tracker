@@ -5,6 +5,8 @@ Kurban döneminde küçükbaş ve büyükbaş hayvan kayıtlarını, müşteri b
 Eski Streamlit/Python tabanlı yapıdan tamamen ayrılarak **Next.js + Supabase** mimarisine taşınmıştır. Mobil uyumlu arayüz, Türkçe form alanları ve kurban operasyonlarına özel iş akışları sunar.
 
 ---
+<img width="934" height="739" alt="image" src="https://github.com/user-attachments/assets/18a52679-e57c-4ad2-b9db-4a9b099f8a52" />
+
 
 ## Özellikler
 
