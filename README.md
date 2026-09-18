@@ -1,4 +1,4 @@
-# Kurbanlık Takip Sistemi
+# Kurbanlık Yönetim Sistemi
 
 Kurban döneminde küçükbaş ve büyükbaş hayvan kayıtlarını, müşteri bilgilerini ve ödeme durumlarını tek bir yerden yönetmek için geliştirilmiş modern bir web uygulaması.
 
