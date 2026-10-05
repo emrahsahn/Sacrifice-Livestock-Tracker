@@ -5,7 +5,13 @@
 export const SESSION_COOKIE = "ks_session";
 
 export function getSessionCookieValue(): string {
-  return process.env.SESSION_SECRET ?? "kurbanlik-session-secret-2026";
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    throw new Error(
+      "SESSION_SECRET tanımlı değil. Güvenli bir değer üretip ortam değişkenlerine ekleyin."
+    );
+  }
+  return secret;
 }
 
 /** Saniye cinsinden; tarayıcı oturumu bu süre sonunda düşer. */

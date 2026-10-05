@@ -11,8 +11,16 @@ export async function login(_state: unknown, formData: FormData) {
   const username = formData.get("username") as string;
   const password = formData.get("password") as string;
 
-  const validUser = process.env.ADMIN_USERNAME ?? "admin";
-  const validPass = process.env.ADMIN_PASSWORD ?? "33admin12345";
+  const validUser = process.env.ADMIN_USERNAME;
+  const validPass = process.env.ADMIN_PASSWORD;
+
+  // Env tanımlı değilse sabit/varsayılan bir kimlikle girişe izin verme (fail-closed)
+  if (!validUser || !validPass) {
+    return {
+      error:
+        "Sunucu yapılandırması eksik: ADMIN_USERNAME / ADMIN_PASSWORD tanımlı değil.",
+    };
+  }
 
   if (username !== validUser || password !== validPass) {
     return { error: "Kullanıcı adı veya şifre hatalı." };
