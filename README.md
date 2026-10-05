@@ -200,10 +200,12 @@ npm run lint
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
 - `ADMIN_USERNAME`
 - `ADMIN_PASSWORD`
 - `SESSION_SECRET`
 - `SESSION_MAX_AGE_HOURS` *(isteğe bağlı)*
+- `CRON_SECRET` *(cron ping güvenliği — tanımlanmazsa `/api/ping` 503 döner)*
 
 ---
 
