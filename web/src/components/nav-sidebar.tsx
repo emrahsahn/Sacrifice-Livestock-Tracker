@@ -3,7 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Home, List, Search, Plus, BarChart2, RefreshCw, Trash2, Mail, Phone, ExternalLink, LogOut,
+  Home, List, Search, Plus, BarChart2, Trash2, Mail, Phone, ExternalLink, LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";

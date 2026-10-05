@@ -136,9 +136,9 @@ export function useTheme() {
   if (!ctx) {
     return {
       theme: undefined as Theme | undefined,
-      setTheme: (t: string) => {},
+      setTheme: () => {},
       visualStyle: undefined as VisualStyle | undefined,
-      setVisualStyle: (s: VisualStyle) => {},
+      setVisualStyle: () => {},
       resolvedTheme: undefined as Theme | undefined,
     };
   }

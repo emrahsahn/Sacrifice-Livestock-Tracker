@@ -9,7 +9,7 @@ import {
   parseBuyukbasExcelRows,
   type BuyukbasParsedRow,
 } from "@/lib/excel-buyukbas-parser";
-import { PAYMENT_OPTIONS, GROUP_CATEGORIES } from "@/lib/types";
+import { PAYMENT_OPTIONS, GROUP_CATEGORIES, type PaymentStatus } from "@/lib/types";
 import { CustomerFormValues } from "@/lib/validations";
 import { formatMoneyInputTR, formatPhoneInputTR } from "@/lib/input-format";
 import { Button } from "@/components/ui/button";
@@ -55,15 +55,15 @@ interface ParsedRow {
   validationError?: string;
 }
 
-function parseExcelRows(data: any[][]): { rows: ParsedRow[]; headerError?: string } {
+function parseExcelRows(data: unknown[][]): { rows: ParsedRow[]; headerError?: string } {
   if (data.length < 2) return { rows: [], headerError: "Excel dosyası en az bir başlık ve bir veri satırı içermeli." };
 
-  const headers = data[0].map((h: any) => normH(String(h || "")));
+  const headers = data[0].map((h) => normH(String(h || "")));
   const rows: ParsedRow[] = [];
 
   for (let i = 1; i < data.length; i++) {
     const cols = data[i];
-    if (!cols || cols.length === 0 || cols.every((c: any) => c === null || c === undefined || c === "")) continue;
+    if (!cols || cols.length === 0 || cols.every((c) => c === null || c === undefined || c === "")) continue;
 
     const map = new Map<string, string>();
     headers.forEach((h: string, idx: number) => map.set(h, String(cols[idx] ?? "").trim()));
@@ -95,7 +95,7 @@ function parseExcelRows(data: any[][]): { rows: ParsedRow[]; headerError?: strin
     const parsedStatus = get("Ödeme Durumu");
     const parsedGroup = get("Grup Kategorisi");
     
-    const payStatus = PAYMENT_OPTIONS.includes(parsedStatus as any)
+    const payStatus = PAYMENT_OPTIONS.includes(parsedStatus as PaymentStatus)
       ? (parsedStatus as CustomerFormValues["payment_status"])
       : "Belirsiz";
     const groupCat = GROUP_CATEGORIES.includes(parsedGroup as (typeof GROUP_CATEGORIES)[number])

@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronLeft, ChevronRight, Download, ChevronDown, ChevronUp, LayoutGrid, Layers } from "lucide-react";
-import { compareHayvanNumarasi, formatPrice, formatPhoneDisplay } from "@/lib/utils";
+import { compareHayvanNumarasi, formatPrice } from "@/lib/utils";
 const PAGE_SIZE = 12;
 
 type SortField = "default" | "number" | "price" | "type" | "whose" | "from_whom";
@@ -206,10 +206,10 @@ export function CustomersClient({ initialCustomers, initialBuyukbas }: Props) {
     return speciesFilter === "kucukbas" ? [] : list;
   }, [initialBuyukbas, speciesFilter]);
 
-  const sorted =
-    speciesFilter === "buyukbas"
-      ? []
-      : sortedKucuk;
+  const sorted = useMemo(
+    () => (speciesFilter === "buyukbas" ? [] : sortedKucuk),
+    [speciesFilter, sortedKucuk]
+  );
 
   const displayItems = useMemo(() => {
     if (speciesFilter === "kucukbas") return { kucuk: sorted, buyuk: [] as BuyukbasHayvanWithHissedarlar[] };
