@@ -202,10 +202,19 @@ npm run lint
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
 - `ADMIN_USERNAME`
 - `ADMIN_PASSWORD`
 - `SESSION_SECRET`
 - `SESSION_MAX_AGE_HOURS` *(isteğe bağlı)*
+- `CRON_SECRET` *(cron ping güvenliği — tanımlanmazsa `/api/ping` 503 döner)*
+
+### Supabase'i uyanık tutma (keep-alive)
+
+Supabase ücretsiz planı 7 gün işlem olmazsa projeyi duraklatır. İki bağımsız kanal yapılandırılabilir:
+
+1. **Vercel Cron** — `web/vercel.json` her 4 günde bir `/api/ping` çağırır. Çalışması için Vercel'de `CRON_SECRET` tanımlı olmalıdır; cron isteği `Authorization: Bearer <CRON_SECRET>` başlığıyla gelir.
+2. **GitHub Actions (yedek)** — `.github/workflows/supabase-keep-alive.yml` her 4 günde bir Supabase REST'e doğrudan ping atar. Çalışması için repo → **Settings → Secrets and variables → Actions** altında `NEXT_PUBLIC_SUPABASE_URL` (veya `SUPABASE_URL`) ve `NEXT_PUBLIC_SUPABASE_ANON_KEY` (veya `SUPABASE_ANON_KEY`) tanımlanmalıdır. Zamanlanmış workflow'lar yalnızca **varsayılan dalda (main)** çalışır.
 
 ---
 

@@ -1,0 +1,44 @@
+name: Supabase Keep-Alive Ping
+
+on:
+  schedule:
+    # Her 4 günde bir saat 07:00 UTC'de otomatik çalışır (Supabase 7 günlük inaktiflik limitini sıfırlar)
+    - cron: '0 7 */4 * *'
+  workflow_dispatch: # GitHub Actions panelinden "Run workflow" butonu ile istendiğinde manuel çalıştırabilme
+
+jobs:
+  ping:
+    name: Ping Supabase Database
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Keep-Alive Ping to Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::SUPABASE_URL veya SUPABASE_ANON_KEY bulunamadı!"
+            echo "Lütfen GitHub Repo -> Settings -> Secrets and variables -> Actions altından ekleyin."
+            exit 1
+          fi
+
+          # URL sonundaki eğik çizgiyi temizle
+          CLEAN_URL=$(echo "$SUPABASE_URL" | sed 's:/*$::')
+
+          echo "Pinging Supabase REST API at $CLEAN_URL..."
+          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X GET "$CLEAN_URL/rest/v1/kurbanl%C4%B1k_hesap?select=random_id&limit=1" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+
+          HTTP_BODY=$(echo "$RESPONSE" | sed -e '$d')
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n1 | cut -d':' -f2)
+
+          echo "HTTP Yanıt Kodu: $HTTP_STATUS"
+          echo "Dönen Veri: $HTTP_BODY"
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "✅ Supabase veritabanı başarıyla sorgulandı ve aktifliği korundu."
+          else
+            echo "::error::Supabase ping başarısız oldu (HTTP Status: $HTTP_STATUS)"
+            exit 1
+          fi

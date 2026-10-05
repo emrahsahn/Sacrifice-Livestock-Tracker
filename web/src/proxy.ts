@@ -5,8 +5,10 @@ import { SESSION_COOKIE, getSessionCookieValue } from "@/lib/session-config";
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Login sayfası, public statikler ve bundler çıktısı serbest
+  // Login sayfası, public statikler, bundler çıktısı ve cron ping'i serbest
+  // (/api/ping kendi CRON_SECRET kontrolünü yapar; buraya takılırsa Vercel cron çalışmaz)
   if (
+    pathname === "/api/ping" ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
