@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Sezon } from "@/lib/types";
 import { selectYear } from "@/actions/seasons";
@@ -29,7 +29,6 @@ export function YearSwitcher({
 }: YearSwitcherProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [selected, setSelected] = useState<string>(String(currentYear));
 
   const activeSeason = seasons.find((s) => s.yil === currentYear);
 
@@ -42,7 +41,6 @@ export function YearSwitcher({
     const yearNum = parseInt(val, 10);
     if (!Number.isFinite(yearNum) || yearNum === currentYear) return;
 
-    setSelected(val);
     startTransition(async () => {
       await selectYear(yearNum);
       router.refresh();
@@ -58,7 +56,7 @@ export function YearSwitcher({
       >
         <SelectTrigger
           className={`h-9 border-border bg-sidebar text-xs font-semibold focus:ring-1 focus:ring-primary ${
-            compact ? "w-28 px-2" : "w-full"
+            compact ? "w-[105px] sm:w-28 px-2" : "w-full"
           } ${activeSeason?.durum === "kapali" ? "border-amber-500/50 text-amber-500" : ""}`}
         >
           <div className="flex items-center gap-1.5 truncate">
