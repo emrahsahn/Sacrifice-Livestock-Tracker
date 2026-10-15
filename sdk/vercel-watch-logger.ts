@@ -25,7 +25,7 @@ export interface VercelWatchConfig {
   apiKey?: string;
   /**
    * Projenizin benzersiz kimliği (projects.json içerisindeki id)
-   * Örn: "yali-qr-menu", "kontenyer-qr-menu"
+   * Örn: "query-system-rho", "yali-qr-menu"
    */
   defaultProjectId?: string;
 }
