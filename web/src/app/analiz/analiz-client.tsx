@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useSyncExternalStore } from "react";
 import type { FullAnalyticsReport } from "@/lib/analytics";
 import { formatPhoneDisplay, formatPrice } from "@/lib/utils";
 import { downloadPastDebtsExcel } from "@/lib/excel-export";
@@ -36,7 +36,10 @@ interface AnalizClientProps {
 
 type TabType = "finans" | "operasyon" | "sadakat" | "alacaklar" | "tablo";
 
+const emptySubscribe = () => () => {};
+
 export function AnalizClient({ report }: AnalizClientProps) {
+  const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
   const [activeTab, setActiveTab] = useState<TabType>("finans");
 
   // Alacaklar arama filtresi
