@@ -2,11 +2,21 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Home, List, Search, Plus, BarChart2, RefreshCw, Trash2, MoreHorizontal } from "lucide-react";
+import {
+  Home,
+  List,
+  Search,
+  Plus,
+  BarChart2,
+  Trash2,
+  MoreHorizontal,
+  TrendingUp,
+  CalendarDays,
+  LogOut,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { logout } from "@/actions/auth";
-import { LogOut } from "lucide-react";
 
 const primaryTabs = [
   { href: "/", label: "Ana Sayfa", icon: Home },
@@ -16,8 +26,9 @@ const primaryTabs = [
 ];
 
 const moreTabs = [
-  { href: "/istatistikler", label: "İstatistikler", icon: BarChart2 },
-  { href: "/guncelle", label: "Güncelle", icon: RefreshCw },
+  { href: "/istatistikler", label: "Sezon İstatistikleri", icon: BarChart2 },
+  { href: "/analiz", label: "Yıllık Analiz", icon: TrendingUp },
+  { href: "/sezonlar", label: "Sezonlar / Yıllar", icon: CalendarDays },
   { href: "/sil", label: "Müşteri Sil", icon: Trash2 },
 ];
 
@@ -37,7 +48,7 @@ export function MobileBottomNav() {
             href={href}
             className={cn(
               "flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors",
-              active ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              active ? "text-primary font-semibold" : "text-muted-foreground hover:text-foreground"
             )}
           >
             <Icon className={cn("h-5 w-5", active && "text-primary")} />
@@ -51,8 +62,8 @@ export function MobileBottomNav() {
         <SheetTrigger asChild>
           <button
             className={cn(
-              "flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors",
-              isMoreActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              "flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors cursor-pointer",
+              isMoreActive ? "text-primary font-semibold" : "text-muted-foreground hover:text-foreground"
             )}
             aria-label="Daha fazla seçenek"
           >
@@ -75,7 +86,7 @@ export function MobileBottomNav() {
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors",
                     active
-                      ? "bg-primary text-primary-foreground"
+                      ? "bg-primary text-primary-foreground font-semibold"
                       : "text-sidebar-foreground hover:bg-accent"
                   )}
                 >
@@ -88,7 +99,7 @@ export function MobileBottomNav() {
               <form action={logout}>
                 <button
                   type="submit"
-                  className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                  className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer"
                 >
                   <LogOut className="h-5 w-5 shrink-0" />
                   Çıkış Yap

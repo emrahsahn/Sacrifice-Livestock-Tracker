@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronLeft, ChevronRight, Download, ChevronDown, ChevronUp, LayoutGrid, Layers } from "lucide-react";
-import { compareHayvanNumarasi, formatPrice, formatPhoneDisplay } from "@/lib/utils";
+import { compareHayvanNumarasi, formatPrice } from "@/lib/utils";
 const PAGE_SIZE = 12;
 
 type SortField = "default" | "number" | "price" | "type" | "whose" | "from_whom";
@@ -43,6 +43,7 @@ function sortCustomers(list: Customer[], field: SortField, dir: SortDir): Custom
 interface Props {
   initialCustomers: Customer[];
   initialBuyukbas: BuyukbasHayvanWithHissedarlar[];
+  editable?: boolean;
 }
 
 type SpeciesFilter = "all" | "kucukbas" | "buyukbas";
@@ -54,10 +55,12 @@ function GroupPanel({
   groupName,
   customers,
   icon,
+  editable = true,
 }: {
   groupName: string;
   customers: Customer[];
   icon: string;
+  editable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const total = customers.reduce((s, c) => s + Number(c.price ?? 0), 0);
@@ -108,7 +111,11 @@ function GroupPanel({
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {customers.map((c, i) => (
-                <CustomerCard key={c.random_id || `${c.phone_number}-${c.number}-${i}`} customer={c} />
+                <CustomerCard
+                  key={c.random_id || `${c.phone_number}-${c.number}-${i}`}
+                  customer={c}
+                  editable={editable}
+                />
               ))}
             </div>
           )}
@@ -137,10 +144,12 @@ function BuyukbasGroupPanel({
   groupName,
   hayvanlar,
   icon,
+  editable = true,
 }: {
   groupName: string;
   hayvanlar: BuyukbasHayvanWithHissedarlar[];
   icon: string;
+  editable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const total = hayvanlar.reduce(
@@ -180,7 +189,7 @@ function BuyukbasGroupPanel({
       {open && (
         <div className="border-t border-border p-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {hayvanlar.map((h) => (
-            <BuyukbasCard key={h.number} hayvan={h} />
+            <BuyukbasCard key={h.number} hayvan={h} editable={editable} />
           ))}
         </div>
       )}
@@ -188,7 +197,7 @@ function BuyukbasGroupPanel({
   );
 }
 
-export function CustomersClient({ initialCustomers, initialBuyukbas }: Props) {
+export function CustomersClient({ initialCustomers, initialBuyukbas, editable = true }: Props) {
   const [sortField, setSortField] = useState<SortField>("default");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [page, setPage] = useState(1);
@@ -206,10 +215,10 @@ export function CustomersClient({ initialCustomers, initialBuyukbas }: Props) {
     return speciesFilter === "kucukbas" ? [] : list;
   }, [initialBuyukbas, speciesFilter]);
 
-  const sorted =
-    speciesFilter === "buyukbas"
-      ? []
-      : sortedKucuk;
+  const sorted = useMemo(
+    () => (speciesFilter === "buyukbas" ? [] : sortedKucuk),
+    [speciesFilter, sortedKucuk]
+  );
 
   const displayItems = useMemo(() => {
     if (speciesFilter === "kucukbas") return { kucuk: sorted, buyuk: [] as BuyukbasHayvanWithHissedarlar[] };
@@ -380,10 +389,14 @@ export function CustomersClient({ initialCustomers, initialBuyukbas }: Props) {
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {paginatedKucuk.map((c, i) => (
-                <CustomerCard key={c.random_id || `${c.phone_number}-${c.number}-${i}`} customer={c} />
+                <CustomerCard
+                  key={c.random_id || `${c.phone_number}-${c.number}-${i}`}
+                  customer={c}
+                  editable={editable}
+                />
               ))}
               {paginatedBuyuk.map((h) => (
-                <BuyukbasCard key={h.number} hayvan={h} />
+                <BuyukbasCard key={h.number} hayvan={h} editable={editable} />
               ))}
             </div>
           )}
@@ -422,11 +435,17 @@ export function CustomersClient({ initialCustomers, initialBuyukbas }: Props) {
                 groupName={group}
                 customers={grouped[group] ?? []}
                 icon={GROUP_ICONS[group] ?? "📂"}
+                editable={editable}
               />
             ))}
 
           {speciesFilter !== "buyukbas" && grupsuzList.length > 0 && (
-            <GroupPanel groupName="Grupsuz Kayıtlar" customers={grupsuzList} icon="❓" />
+            <GroupPanel
+              groupName="Grupsuz Kayıtlar"
+              customers={grupsuzList}
+              icon="❓"
+              editable={editable}
+            />
           )}
 
           {speciesFilter !== "kucukbas" &&
@@ -439,6 +458,7 @@ export function CustomersClient({ initialCustomers, initialBuyukbas }: Props) {
                   groupName={group}
                   hayvanlar={list}
                   icon={GROUP_ICONS[group] ?? "📂"}
+                  editable={editable}
                 />
               );
             })}
@@ -452,6 +472,7 @@ export function CustomersClient({ initialCustomers, initialBuyukbas }: Props) {
                   groupName="Grupsuz Büyükbaş"
                   hayvanlar={list}
                   icon="❓"
+                  editable={editable}
                 />
               );
             })()}

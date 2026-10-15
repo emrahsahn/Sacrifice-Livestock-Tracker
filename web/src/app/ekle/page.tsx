@@ -22,6 +22,8 @@ import { formatMoneyInputTR, formatPhoneInputTR } from "@/lib/input-format";
 import ExcelBulkImport from "@/components/excel-bulk-import";
 import { BuyukbasEkleForm } from "@/components/buyukbas-ekle-form";
 import { KUCUKBAS_GROUP_CATEGORIES } from "@/lib/types";
+import { PastCustomerPicker } from "@/components/past-customer-picker";
+import type { PastCustomerSuggestion } from "@/actions/seasons";
 
 type Mode = "kucukbas" | "buyukbas" | "excel" | null;
 
@@ -49,6 +51,13 @@ export default function EklePage() {
   const showAddress =
     groupCategory === "Köye Dağıtılacaklar" ||
     groupCategory === "Çarşıya Dağıtılacaklar";
+
+  function handleSelectPastCustomer(c: PastCustomerSuggestion) {
+    if (c.whose) setValue("whose", c.whose);
+    if (c.phone_number) setValue("phone_number", formatPhoneInputTR(c.phone_number));
+    if (c.address) setValue("address", c.address);
+    if (c.lastGroup) setValue("group_category", c.lastGroup as CustomerFormValues["group_category"]);
+  }
 
   async function onSubmit(values: CustomerFormValues) {
     setServerError("");
@@ -189,6 +198,11 @@ export default function EklePage() {
               {serverError}
             </p>
           )}
+
+          <PastCustomerPicker
+            onSelect={handleSelectPastCustomer}
+            className="mb-4"
+          />
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <h3 className="text-base font-semibold text-muted-foreground border-b border-border pb-2">

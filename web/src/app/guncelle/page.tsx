@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import {
   fetchCustomerByKey,
   searchByNumberPreview,
@@ -59,6 +59,19 @@ export default function GuncelledPage() {
   const [error, setError] = useState("");
   const [historyRefresh, setHistoryRefresh] = useState(0);
 
+  // Önizleme veya alan değiştiğinde not/adres alanını mevcut değerle ön-doldur.
+  // (Efekt yerine render sırasında senkronizasyon — React'in önerdiği desen.)
+  const [lastSync, setLastSync] = useState<{ preview: Customer | null; field: string }>({
+    preview: null,
+    field: "type",
+  });
+  if (lastSync.preview !== preview || lastSync.field !== field) {
+    setLastSync({ preview, field });
+    if (preview && (field === "note" || field === "address")) {
+      setNewValue(field === "note" ? (preview.note ?? "") : (preview.address ?? ""));
+    }
+  }
+
   const compositeKey: CustomerKey | null = useMemo(() => {
     if (!preview) return null;
     return {
@@ -76,12 +89,6 @@ export default function GuncelledPage() {
     setPayStatus(c.payment_status);
     setGroupCat(c.group_category ?? "");
   }
-
-  useEffect(() => {
-    if (!preview) return;
-    if (field === "note") setNewValue(preview.note ?? "");
-    else if (field === "address") setNewValue(preview.address ?? "");
-  }, [preview, field]);
 
   async function handleSearch() {
     if (!searchNum.trim()) return;
