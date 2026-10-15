@@ -18,7 +18,7 @@ export interface VercelWatchConfig {
   apiKey?: string;
   /**
    * Projenizin benzersiz kimliği (projects.json içerisindeki id)
-   * Varsayılan: "kurbanlık-yonetim-sistemi"
+   * Varsayılan: "kurbanlik-yonetim-sistemi"
    */
   defaultProjectId?: string;
 }
@@ -42,7 +42,7 @@ const defaultConfig: VercelWatchConfig = {
     process.env.NEXT_PUBLIC_VERCEL_WATCH_URL ||
     "https://vercel-website-security.vercel.app",
   apiKey: process.env.VERCEL_WATCH_API_KEY || process.env.WATCH_API_KEY,
-  defaultProjectId: process.env.VERCEL_WATCH_PROJECT_ID || "kurbanlık-yonetim-sistemi",
+  defaultProjectId: process.env.VERCEL_WATCH_PROJECT_ID || "kurbanlik-yonetim-sistemi",
 };
 
 /**
@@ -142,7 +142,7 @@ export async function sendWatchLog(
       payload.projectId ||
       finalConfig.defaultProjectId ||
       process.env.VERCEL_WATCH_PROJECT_ID ||
-      "kurbanlık-yonetim-sistemi";
+      "kurbanlik-yonetim-sistemi";
 
     // Non-blocking istek
     const response = await fetch(targetUrl, {
@@ -184,7 +184,7 @@ export function logLoginSuccess(params: {
 }) {
   return sendWatchLog(
     {
-      projectId: params.projectId || "kurbanlık-yonetim-sistemi",
+      projectId: params.projectId || "kurbanlik-yonetim-sistemi",
       event: "LOGIN_SUCCESS",
       username: params.username,
       ip: extractClientIp(params.req),
@@ -204,7 +204,7 @@ export function logLoginFailed(params: {
 }) {
   return sendWatchLog(
     {
-      projectId: params.projectId || "kurbanlık-yonetim-sistemi",
+      projectId: params.projectId || "kurbanlik-yonetim-sistemi",
       event: "LOGIN_FAILED",
       username: params.username,
       ip: extractClientIp(params.req),
@@ -224,7 +224,7 @@ export function logLoginBlocked(params: {
 }) {
   return sendWatchLog(
     {
-      projectId: params.projectId || "kurbanlık-yonetim-sistemi",
+      projectId: params.projectId || "kurbanlik-yonetim-sistemi",
       event: "LOGIN_BLOCKED",
       username: params.username,
       ip: extractClientIp(params.req),
@@ -245,7 +245,7 @@ export function logLogout(params: {
 }) {
   return sendWatchLog(
     {
-      projectId: params.projectId || "kurbanlık-yonetim-sistemi",
+      projectId: params.projectId || "kurbanlik-yonetim-sistemi",
       event: "LOGOUT",
       username: params.username,
       ip: extractClientIp(params.req),
