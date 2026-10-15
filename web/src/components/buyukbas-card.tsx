@@ -641,38 +641,48 @@ function BuyukbasCardDisplay({
 
   return (
     <div
-      className={`group flex flex-col rounded-xl border-2 border-border bg-card p-4 sm:p-5 shadow-sm ${
+      className={`group flex flex-col rounded-xl border-2 border-border bg-card p-3.5 sm:p-5 shadow-sm w-full min-w-0 overflow-hidden ${
         !isPreview ? "premium-card-interactive" : ""
       }`}
     >
-      <div className="flex items-center justify-between border-b border-border pb-3 mb-3 gap-2">
-        <span
-          className={`text-lg sm:text-xl font-extrabold text-destructive ${clickRow ? "cursor-pointer hover:opacity-80" : ""}`}
-          onClick={() => onHayvanFieldClick?.("Hayvan Numarası", "number", hayvan.number)}
-        >
-          #{hayvan.number}
-        </span>
-        <div className="flex items-center gap-1.5 flex-wrap justify-end">
-          <span className="rounded-full bg-violet-500/15 border border-violet-500/30 px-2 py-0.5 text-[10px] font-semibold text-violet-600 dark:text-violet-300">
+      <div className="border-b border-border pb-3 mb-3 space-y-2">
+        {/* Üst Satır: Hayvan No ve Büyükbaş Rozeti */}
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <span
+            className={`text-base sm:text-xl font-extrabold text-destructive ${clickRow ? "cursor-pointer hover:opacity-80" : ""}`}
+            onClick={() => onHayvanFieldClick?.("Hayvan Numarası", "number", hayvan.number)}
+          >
+            #{hayvan.number}
+          </span>
+          <span className="rounded-full bg-violet-500/15 border border-violet-500/30 px-2.5 py-0.5 text-[11px] font-semibold text-violet-600 dark:text-violet-300 shrink-0">
             Büyükbaş
           </span>
-          {hayvan.group_category && (
-            <span
-              className={`rounded-full bg-primary/15 border border-primary/30 px-2 py-0.5 text-[10px] font-semibold text-primary truncate max-w-[140px] ${clickRow ? "cursor-pointer" : ""}`}
-              onClick={() =>
-                onHayvanFieldClick?.("Grup Kategorisi", "group_category", hayvan.group_category ?? "")
-              }
-            >
-              📂 {hayvan.group_category}
-            </span>
-          )}
-          <span
-            className={`rounded-full bg-primary px-2.5 py-0.5 text-xs font-bold text-primary-foreground ${clickRow ? "cursor-pointer" : ""}`}
-            onClick={() => onHayvanFieldClick?.("Cins", "type", hayvan.type || "")}
-          >
-            {hayvan.type || "—"}
-          </span>
         </div>
+
+        {/* Alt Satır: Grup Kategorisi ve Cins */}
+        {(hayvan.group_category || hayvan.type) && (
+          <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+            {hayvan.group_category && (
+              <span
+                className={`inline-flex items-center rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-0.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400 truncate max-w-full ${clickRow ? "cursor-pointer" : ""}`}
+                title={hayvan.group_category}
+                onClick={() =>
+                  onHayvanFieldClick?.("Grup Kategorisi", "group_category", hayvan.group_category ?? "")
+                }
+              >
+                📂 {hayvan.group_category}
+              </span>
+            )}
+            {hayvan.type && (
+              <span
+                className={`inline-flex items-center rounded-full bg-primary/20 border border-primary/30 px-2.5 py-0.5 text-[11px] font-bold text-primary truncate max-w-full ${clickRow ? "cursor-pointer" : ""}`}
+                onClick={() => onHayvanFieldClick?.("Cins", "type", hayvan.type || "")}
+              >
+                {hayvan.type}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="space-y-1.5 text-sm mb-3">

@@ -260,60 +260,41 @@ function CustomerCardInner({ c, onFieldClick, onPrintClick, isPreview }: Custome
 
   const CardContent = (
     <div
-      className={`group flex flex-col justify-between rounded-xl border-2 border-border bg-card p-4 sm:p-5 ${!isPreview ? "premium-card-interactive" : "shadow-sm"}`}
+      className={`group flex flex-col justify-between rounded-xl border-2 border-border bg-card p-3.5 sm:p-5 w-full min-w-0 overflow-hidden ${!isPreview ? "premium-card-interactive" : "shadow-sm"}`}
     >
       {/* Header */}
       <div>
-        <div className="flex items-center justify-between border-b border-border pb-3 mb-3 gap-2">
-          <div
-            className={`flex flex-wrap items-center gap-1.5 min-w-0 ${onFieldClick ? "cursor-pointer hover:opacity-80" : ""}`}
-            onClick={() => onFieldClick?.("Hayvan Numarası", "number", c.number)}
-            title={animals.length > 1 ? `${animals.length} hayvan` : undefined}
-          >
-            {animals.length === 0 ? (
-              <span className="text-lg sm:text-xl font-extrabold text-destructive shrink-0">
-                #{c.number || "—"}
-              </span>
-            ) : (
-              animals.map((n, idx) => (
-                <span
-                  key={`${n}-${idx}`}
-                  className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-sm sm:text-base font-extrabold text-destructive"
-                >
-                  #{n}
-                </span>
-              ))
-            )}
-            {animals.length > 1 && (
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                {animals.length} hayvan
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5 flex-wrap justify-end shrink-0">
-            {c.group_category && (
-              <span
-                className={`rounded-full bg-primary/15 border border-primary/30 px-2 py-0.5 text-[10px] font-semibold text-primary truncate max-w-[140px] ${onFieldClick ? "cursor-pointer hover:opacity-80" : ""}`}
-                title={c.group_category}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onFieldClick?.("Grup Kategorisi", "group_category", c.group_category ?? "");
-                }}
-              >
-                📂 {c.group_category}
-              </span>
-            )}
-            <span
-              className={`rounded-full bg-primary px-2.5 py-0.5 text-xs font-bold text-primary-foreground truncate max-w-[200px] ${onFieldClick ? "cursor-pointer hover:opacity-80" : ""}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onFieldClick?.("Cins", "type", c.type || "");
-              }}
-            >
-              {c.type || "—"}
-            </span>
+        <div className="border-b border-border pb-3 mb-3 space-y-2">
+          {/* Üst Satır: Hayvan Numarası ve Ödeme Durumu */}
+          <div className="flex items-center justify-between gap-2 min-w-0">
             <div
-              className={onFieldClick ? "cursor-pointer hover:opacity-80" : ""}
+              className={`flex items-center gap-1.5 flex-wrap min-w-0 ${onFieldClick ? "cursor-pointer hover:opacity-80" : ""}`}
+              onClick={() => onFieldClick?.("Hayvan Numarası", "number", c.number)}
+              title={animals.length > 1 ? `${animals.length} hayvan` : undefined}
+            >
+              {animals.length === 0 ? (
+                <span className="text-base sm:text-xl font-extrabold text-destructive shrink-0">
+                  #{c.number || "—"}
+                </span>
+              ) : (
+                animals.map((n, idx) => (
+                  <span
+                    key={`${n}-${idx}`}
+                    className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-xs sm:text-base font-extrabold text-destructive"
+                  >
+                    #{n}
+                  </span>
+                ))
+              )}
+              {animals.length > 1 && (
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                  {animals.length} hayvan
+                </span>
+              )}
+            </div>
+
+            <div
+              className={`shrink-0 ${onFieldClick ? "cursor-pointer hover:opacity-80" : ""}`}
               onClick={(e) => {
                 e.stopPropagation();
                 onFieldClick?.("Ödeme Durumu", "payment_status", c.payment_status);
@@ -322,6 +303,35 @@ function CustomerCardInner({ c, onFieldClick, onPrintClick, isPreview }: Custome
               {paymentBadge(c.payment_status as PaymentStatus)}
             </div>
           </div>
+
+          {/* Alt Satır: Grup Kategorisi ve Cins Bilgisi */}
+          {(c.group_category || c.type) && (
+            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+              {c.group_category && (
+                <span
+                  className={`inline-flex items-center rounded-full bg-amber-500/15 border border-amber-500/30 px-2.5 py-0.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400 truncate max-w-full ${onFieldClick ? "cursor-pointer hover:opacity-80" : ""}`}
+                  title={c.group_category}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFieldClick?.("Grup Kategorisi", "group_category", c.group_category ?? "");
+                  }}
+                >
+                  📂 {c.group_category}
+                </span>
+              )}
+              {c.type && (
+                <span
+                  className={`inline-flex items-center rounded-full bg-primary/20 border border-primary/30 px-2.5 py-0.5 text-[11px] font-bold text-primary truncate max-w-full ${onFieldClick ? "cursor-pointer hover:opacity-80" : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFieldClick?.("Cins", "type", c.type || "");
+                  }}
+                >
+                  {c.type}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="space-y-1.5 text-sm">
