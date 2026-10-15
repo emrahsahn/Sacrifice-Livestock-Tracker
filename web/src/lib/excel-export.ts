@@ -212,3 +212,45 @@ export function downloadCombinedExcel(
 
   XLSX.writeFile(wb, filename);
 }
+
+export function downloadPastDebtsExcel(
+  debts: Array<{
+    yil: number;
+    category: string;
+    whose: string;
+    phone_number: string;
+    hayvanNumber: string;
+    agreed_total: number;
+    remaining_debt: number;
+    payment_status: string;
+  }>,
+  filename: string
+) {
+  const headers = [
+    "Yıl",
+    "Kategori",
+    "Müşteri Adı",
+    "Telefon Numarası",
+    "Hayvan No",
+    "Anlaşılan Toplam (TL)",
+    "Kalan Borç (TL)",
+    "Ödeme Durumu",
+  ];
+
+  const rows = debts.map((d) => [
+    d.yil,
+    d.category,
+    d.whose,
+    formatPhoneDisplay(d.phone_number),
+    d.hayvanNumber,
+    d.agreed_total,
+    d.remaining_debt,
+    d.payment_status,
+  ]);
+
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Kalan Alacaklar");
+  XLSX.writeFile(workbook, filename);
+}
+

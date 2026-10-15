@@ -15,8 +15,15 @@ import {
   normalizePhone,
 } from "@/lib/utils";
 
-export async function getCustomers(supabase: SupabaseClient): Promise<Customer[]> {
-  const { data, error } = await supabase.from(TABLE).select("*");
+export async function getCustomers(
+  supabase: SupabaseClient,
+  yil?: number
+): Promise<Customer[]> {
+  let query = supabase.from(TABLE).select("*");
+  if (yil !== undefined) {
+    query = query.eq("yil", yil);
+  }
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as Customer[];
   rows.sort((x, y) => compareHayvanNumarasi(x.number, y.number));
@@ -24,18 +31,23 @@ export async function getCustomers(supabase: SupabaseClient): Promise<Customer[]
 }
 
 /**
- * Composite key (random_id + number) ile tek bir kaydı getirir.
+ * Composite key (random_id + number, opsiyonel yil) ile tek bir kaydı getirir.
  */
 export async function getCustomerByCompositeKey(
   supabase: SupabaseClient,
   key: CustomerKey
 ): Promise<Customer | null> {
-  const { data, error } = await supabase
+  let query = supabase
     .from(TABLE)
     .select("*")
     .eq("random_id", key.random_id)
-    .eq("number", key.number)
-    .maybeSingle();
+    .eq("number", key.number);
+
+  if (key.yil !== undefined) {
+    query = query.eq("yil", key.yil);
+  }
+
+  const { data, error } = await query.maybeSingle();
   if (error) throw new Error(error.message);
   return data as Customer | null;
 }
@@ -43,13 +55,11 @@ export async function getCustomerByCompositeKey(
 /**
  * Hayvan numarasıyla arama: virgülle ayrılmış string içinde tam token eşleşmesi.
  * Örn. "101" → "101, 102" eşleşir; "10" → "101, 102" eşleşmez.
- *
- * Kullanım: tekil bir numara veya virgülle ayrılmış birden fazla numara da
- * verilebilir; her bir token için eşleşen kayıtlar döner.
  */
 export async function searchByNumber(
   supabase: SupabaseClient,
-  number: string
+  number: string,
+  yil?: number
 ): Promise<Customer[]> {
   const tokens = number
     .split(",")
@@ -57,12 +67,16 @@ export async function searchByNumber(
     .filter((s) => s.length > 0);
   if (tokens.length === 0) return [];
 
-  // İlk token ile geniş tarama (DB tarafında ILIKE), ardından tam token
-  // eşleşmesi için client-side filtre.
-  const { data, error } = await supabase
+  let query = supabase
     .from(TABLE)
     .select("*")
     .ilike("number", `%${tokens[0]}%`);
+
+  if (yil !== undefined) {
+    query = query.eq("yil", yil);
+  }
+
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []) as Customer[];
@@ -72,29 +86,37 @@ export async function searchByNumber(
 export async function getCustomerHistory(
   supabase: SupabaseClient,
   hayvanNumber: string,
-  randomId?: string | null
+  randomId?: string | null,
+  yil?: number
 ): Promise<HistoryEntry[]> {
-  // Tercih: random_id ile tarama (composite key'in benzersiz parçası).
-  // Geriye dönük uyum: random_id yoksa veya kolon yoksa hayvan_number ile tara.
   if (randomId) {
-    const { data, error } = await supabase
+    let query = supabase
       .from(HISTORY_TABLE)
-      .select("id, hayvan_number, random_id, snapshot, recorded_at, action")
-      .eq("random_id", randomId)
-      .order("recorded_at", { ascending: false });
+      .select("id, hayvan_number, random_id, yil, snapshot, recorded_at, action")
+      .eq("random_id", randomId);
+
+    if (yil !== undefined) {
+      query = query.eq("yil", yil);
+    }
+
+    const { data, error } = await query.order("recorded_at", { ascending: false });
     if (!error) return (data ?? []) as HistoryEntry[];
     if (!isMissingHistoryTableError(error.message) && !isMissingRandomIdError(error.message)) {
       throw new Error(error.message);
     }
     if (isMissingHistoryTableError(error.message)) return [];
-    // random_id kolonu yoksa hayvan_number fallback'ine düş.
   }
 
-  const { data, error } = await supabase
+  let fallbackQuery = supabase
     .from(HISTORY_TABLE)
-    .select("id, hayvan_number, snapshot, recorded_at, action")
-    .eq("hayvan_number", hayvanNumber)
-    .order("recorded_at", { ascending: false });
+    .select("id, hayvan_number, random_id, yil, snapshot, recorded_at, action")
+    .eq("hayvan_number", hayvanNumber);
+
+  if (yil !== undefined) {
+    fallbackQuery = fallbackQuery.eq("yil", yil);
+  }
+
+  const { data, error } = await fallbackQuery.order("recorded_at", { ascending: false });
   if (error) {
     if (isMissingHistoryTableError(error.message)) return [];
     throw new Error(error.message);
@@ -104,12 +126,19 @@ export async function getCustomerHistory(
 
 export async function searchByOwner(
   supabase: SupabaseClient,
-  whose: string
+  whose: string,
+  yil?: number
 ): Promise<Customer[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from(TABLE)
     .select("*")
     .ilike("whose", `%${whose}%`);
+
+  if (yil !== undefined) {
+    query = query.eq("yil", yil);
+  }
+
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data ?? []) as Customer[];
 }
@@ -117,9 +146,10 @@ export async function searchByOwner(
 export async function searchByNumberAndOwner(
   supabase: SupabaseClient,
   number: string,
-  whose: string
+  whose: string,
+  yil?: number
 ): Promise<Customer[]> {
-  const byNum = await searchByNumber(supabase, number);
+  const byNum = await searchByNumber(supabase, number, yil);
   const w = whose.trim().toLocaleLowerCase("tr-TR");
   return byNum.filter((c) =>
     String(c.whose ?? "").toLocaleLowerCase("tr-TR").includes(w)
@@ -128,31 +158,42 @@ export async function searchByNumberAndOwner(
 
 export async function searchByType(
   supabase: SupabaseClient,
-  kind: string
+  kind: string,
+  yil?: number
 ): Promise<Customer[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from(TABLE)
     .select("*")
     .ilike("type", `%${kind}%`);
+
+  if (yil !== undefined) {
+    query = query.eq("yil", yil);
+  }
+
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data ?? []) as Customer[];
 }
 
-/**
- * Telefon numarasıyla arama: girdi normalize edilir, tam veya kısmi
- * (ILIKE) eşleşme döner.
- */
 export async function searchByPhone(
   supabase: SupabaseClient,
-  phone: string
+  phone: string,
+  yil?: number
 ): Promise<Customer[]> {
   const normalized = normalizePhone(phone);
   const target = normalized || String(phone ?? "").replace(/\D/g, "");
   if (!target) return [];
-  const { data, error } = await supabase
+
+  let query = supabase
     .from(TABLE)
     .select("*")
     .ilike("phone_number", `%${target}%`);
+
+  if (yil !== undefined) {
+    query = query.eq("yil", yil);
+  }
+
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data ?? []) as Customer[];
 }
@@ -165,7 +206,6 @@ function isMissingRandomIdError(message: string): boolean {
   return /random_id/i.test(message) && /does not exist|column/i.test(message);
 }
 
-/** Audit tablosu migrasyonu uygulanmamış remote DB'lerde PostgREST bu hatayı verir. */
 function isMissingHistoryTableError(message: string): boolean {
   const m = message.toLowerCase();
   return (
@@ -177,7 +217,7 @@ function isMissingHistoryTableError(message: string): boolean {
   );
 }
 
-export async function getStats(supabase: SupabaseClient) {
+export async function getStats(supabase: SupabaseClient, yil?: number) {
   let rows: Array<{
     price?: unknown;
     payment_status?: unknown;
@@ -186,14 +226,24 @@ export async function getStats(supabase: SupabaseClient) {
   }>;
   let count: number | null;
 
-  const full = await supabase
+  let fullQuery = supabase
     .from(TABLE)
     .select("price, payment_status, agreed_total, number", { count: "exact" });
 
+  if (yil !== undefined) {
+    fullQuery = fullQuery.eq("yil", yil);
+  }
+
+  const full = await fullQuery;
+
   if (full.error && isMissingAgreedTotalError(full.error.message)) {
-    const legacy = await supabase
+    let legacyQuery = supabase
       .from(TABLE)
       .select("price, payment_status, number", { count: "exact" });
+    if (yil !== undefined) {
+      legacyQuery = legacyQuery.eq("yil", yil);
+    }
+    const legacy = await legacyQuery;
     if (legacy.error) throw new Error(legacy.error.message);
     rows = legacy.data ?? [];
     count = legacy.count ?? null;
@@ -236,10 +286,12 @@ export async function getStats(supabase: SupabaseClient) {
   };
 }
 
-export async function getGroupStats(supabase: SupabaseClient) {
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select("group_category, price, number");
+export async function getGroupStats(supabase: SupabaseClient, yil?: number) {
+  let query = supabase.from(TABLE).select("group_category, price, number");
+  if (yil !== undefined) {
+    query = query.eq("yil", yil);
+  }
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
 
   const rows = data ?? [];
@@ -259,51 +311,68 @@ export async function getGroupStats(supabase: SupabaseClient) {
 // ─── Büyükbaş ─────────────────────────────────────────────────────────────────
 
 export async function getBuyukbasHayvanlar(
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  yil?: number
 ): Promise<BuyukbasHayvanWithHissedarlar[]> {
-  const { data: hayvanlar, error: hErr } = await supabase
-    .from(BUYUKBAS_TABLE)
-    .select("*");
+  let hQuery = supabase.from(BUYUKBAS_TABLE).select("*");
+  if (yil !== undefined) {
+    hQuery = hQuery.eq("yil", yil);
+  }
+  const { data: hayvanlar, error: hErr } = await hQuery;
   if (hErr) throw new Error(hErr.message);
 
-  const { data: hissedarlar, error: hsErr } = await supabase
-    .from(BUYUKBAS_HISSEDAR_TABLE)
-    .select("*");
+  let hsQuery = supabase.from(BUYUKBAS_HISSEDAR_TABLE).select("*");
+  if (yil !== undefined) {
+    hsQuery = hsQuery.eq("yil", yil);
+  }
+  const { data: hissedarlar, error: hsErr } = await hsQuery;
   if (hsErr) throw new Error(hsErr.message);
 
   const byHayvan = new Map<string, BuyukbasHissedar[]>();
   for (const h of (hissedarlar ?? []) as BuyukbasHissedar[]) {
-    const list = byHayvan.get(h.hayvan_number) ?? [];
+    const key = `${h.yil ?? ""}_${h.hayvan_number}`;
+    const list = byHayvan.get(key) ?? [];
     list.push(h);
-    byHayvan.set(h.hayvan_number, list);
+    byHayvan.set(key, list);
   }
 
   const rows = (hayvanlar ?? []) as BuyukbasHayvan[];
   rows.sort((a, b) => compareHayvanNumarasi(a.number, b.number));
 
-  return rows.map((hayvan) => ({
-    ...hayvan,
-    hissedarlar: byHayvan.get(hayvan.number) ?? [],
-  }));
+  return rows.map((hayvan) => {
+    const key = `${hayvan.yil ?? ""}_${hayvan.number}`;
+    return {
+      ...hayvan,
+      hissedarlar: byHayvan.get(key) ?? [],
+    };
+  });
 }
 
 export async function getBuyukbasHayvanWithHissedarlar(
   supabase: SupabaseClient,
-  number: string
+  number: string,
+  yil?: number
 ): Promise<BuyukbasHayvanWithHissedarlar | null> {
   const token = number.trim();
-  const { data: hayvan, error: hErr } = await supabase
-    .from(BUYUKBAS_TABLE)
-    .select("*")
-    .eq("number", token)
-    .maybeSingle();
+  let query = supabase.from(BUYUKBAS_TABLE).select("*").eq("number", token);
+  if (yil !== undefined) {
+    query = query.eq("yil", yil);
+  }
+  const { data: hayvan, error: hErr } = await query.maybeSingle();
   if (hErr) throw new Error(hErr.message);
   if (!hayvan) return null;
 
-  const { data: hissedarlar, error: hsErr } = await supabase
+  let hsQuery = supabase
     .from(BUYUKBAS_HISSEDAR_TABLE)
     .select("*")
     .eq("hayvan_number", token);
+
+  const actualYil = yil ?? (hayvan as BuyukbasHayvan).yil;
+  if (actualYil !== undefined) {
+    hsQuery = hsQuery.eq("yil", actualYil);
+  }
+
+  const { data: hissedarlar, error: hsErr } = await hsQuery;
   if (hsErr) throw new Error(hsErr.message);
 
   return {
@@ -314,21 +383,23 @@ export async function getBuyukbasHayvanWithHissedarlar(
 
 export async function searchBuyukbasByNumber(
   supabase: SupabaseClient,
-  number: string
+  number: string,
+  yil?: number
 ): Promise<BuyukbasHayvanWithHissedarlar[]> {
   const token = number.trim();
   if (!token) return [];
-  const hayvan = await getBuyukbasHayvanWithHissedarlar(supabase, token);
+  const hayvan = await getBuyukbasHayvanWithHissedarlar(supabase, token, yil);
   return hayvan ? [hayvan] : [];
 }
 
 export async function searchBuyukbasByOwner(
   supabase: SupabaseClient,
-  whose: string
+  whose: string,
+  yil?: number
 ): Promise<BuyukbasHayvanWithHissedarlar[]> {
   const w = whose.trim().toLocaleLowerCase("tr-TR");
   if (!w) return [];
-  const all = await getBuyukbasHayvanlar(supabase);
+  const all = await getBuyukbasHayvanlar(supabase, yil);
   return all.filter((h) =>
     h.hissedarlar.some((hs) =>
       String(hs.whose ?? "").toLocaleLowerCase("tr-TR").includes(w)
@@ -338,32 +409,47 @@ export async function searchBuyukbasByOwner(
 
 export async function searchBuyukbasByPhone(
   supabase: SupabaseClient,
-  phone: string
+  phone: string,
+  yil?: number
 ): Promise<BuyukbasHayvanWithHissedarlar[]> {
   const normalized = normalizePhone(phone);
   const target = normalized || String(phone ?? "").replace(/\D/g, "");
   if (!target) return [];
-  const { data, error } = await supabase
+
+  let query = supabase
     .from(BUYUKBAS_HISSEDAR_TABLE)
-    .select("hayvan_number")
+    .select("hayvan_number, yil")
     .ilike("phone_number", `%${target}%`);
+
+  if (yil !== undefined) {
+    query = query.eq("yil", yil);
+  }
+
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
-  const numbers = [...new Set((data ?? []).map((r) => r.hayvan_number as string))];
+
+  // Benzersiz (hayvan_number, yil) çiftlerini bul
+  const uniqueItems = new Map<string, { num: string; y?: number }>();
+  for (const r of data ?? []) {
+    const key = `${r.yil ?? ""}_${r.hayvan_number}`;
+    if (!uniqueItems.has(key)) {
+      uniqueItems.set(key, { num: r.hayvan_number as string, y: r.yil as number | undefined });
+    }
+  }
+
   const results: BuyukbasHayvanWithHissedarlar[] = [];
-  for (const num of numbers) {
-    const h = await getBuyukbasHayvanWithHissedarlar(supabase, num);
+  for (const item of uniqueItems.values()) {
+    const h = await getBuyukbasHayvanWithHissedarlar(supabase, item.num, item.y ?? yil);
     if (h) results.push(h);
   }
   return results;
 }
 
-export async function getBuyukbasStats(supabase: SupabaseClient) {
-  const all = await getBuyukbasHayvanlar(supabase);
+export async function getBuyukbasStats(supabase: SupabaseClient, yil?: number) {
+  const all = await getBuyukbasHayvanlar(supabase, yil);
   let totalHisse = 0;
   let soldHisse = 0;
-  /** Hayvan başına sözleşme tutarı (hayvan_fiyati toplamı). */
   let totalHayvanFiyati = 0;
-  /** Hissedarların güncel kalan borçları (price, Ödendi hariç). */
   let unpaidTotal = 0;
   let unpaidCount = 0;
 
@@ -391,8 +477,8 @@ export async function getBuyukbasStats(supabase: SupabaseClient) {
   };
 }
 
-export async function getBuyukbasGroupStats(supabase: SupabaseClient) {
-  const all = await getBuyukbasHayvanlar(supabase);
+export async function getBuyukbasGroupStats(supabase: SupabaseClient, yil?: number) {
+  const all = await getBuyukbasHayvanlar(supabase, yil);
   const groupMap: Record<string, { count: number; animalCount: number; total: number }> = {};
 
   for (const h of all) {

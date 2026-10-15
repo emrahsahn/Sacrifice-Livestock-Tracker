@@ -75,6 +75,7 @@ function customerKey(c: Customer): CustomerKey {
   return {
     random_id: c.random_id,
     number: c.number,
+    yil: c.yil,
   };
 }
 
@@ -442,11 +443,14 @@ function CustomerCardInner({ c, onFieldClick, onPrintClick, isPreview }: Custome
 
 interface CustomerCardProps {
   customer: Customer;
+  editable?: boolean;
 }
 
-export function CustomerCard({ customer }: CustomerCardProps) {
+export function CustomerCard({ customer, editable = true }: CustomerCardProps) {
   const [printOpen, setPrintOpen] = useState(false);
-  const [printTitle, setPrintTitle] = useState("2026 Kurbanlık Organizasyonu");
+  const [printTitle, setPrintTitle] = useState(
+    `${customer.yil || 2026} Kurbanlık Organizasyonu`
+  );
   const [printQueueNo, setPrintQueueNo] = useState("1");
 
   const [editOpen, setEditOpen] = useState(false);
@@ -630,7 +634,7 @@ export function CustomerCard({ customer }: CustomerCardProps) {
     <>
       <CustomerCardInner
         c={customer}
-        onFieldClick={handleFieldClick}
+        onFieldClick={editable ? handleFieldClick : undefined}
         onPrintClick={openPrintDialog}
       />
 

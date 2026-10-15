@@ -1,6 +1,20 @@
 export type PaymentStatus = "Belirsiz" | "Ödendi" | "Kısmi Ödeme" | "Ödenmedi";
 
+export type SezonDurum = "acik" | "kapali";
+
+export interface Sezon {
+  yil: number;
+  ad: string;
+  durum: SezonDurum;
+  is_default: boolean;
+  notlar?: string | null;
+  created_at?: string;
+  closed_at?: string | null;
+}
+
 export interface Customer {
+  /** Sezon / kurban yılı. */
+  yil: number;
   /**
    * Müşteri kaydını benzersiz tanımlayan rastgele üretilmiş kısa kimlik
    * (composite primary key'in parçası). Kayıt eklenirken DB tarafında üretilir.
@@ -35,6 +49,7 @@ export interface Customer {
 export interface CustomerKey {
   random_id: string;
   number: string;
+  yil?: number;
 }
 
 export const PAYMENT_OPTIONS: PaymentStatus[] = [
@@ -64,6 +79,7 @@ export const HISTORY_TABLE = "kurbanlik_hesap_history";
 
 export const BUYUKBAS_TABLE = "buyukbas_hayvan";
 export const BUYUKBAS_HISSEDAR_TABLE = "buyukbas_hissedar";
+export const SEZON_TABLE = "sezon";
 
 /** Büyükbaş grupları (UI filtreleri). */
 export const BUYUKBAS_GROUP_CATEGORIES = [
@@ -88,6 +104,7 @@ export const KUCUKBAS_GROUP_CATEGORIES = [
 ] as const;
 
 export interface BuyukbasHayvan {
+  yil: number;
   number: string;
   toplam_hisse: number;
   hayvan_fiyati: number;
@@ -105,6 +122,7 @@ export interface BuyukbasHayvan {
 
 export interface BuyukbasHissedar {
   id: string;
+  yil: number;
   hayvan_number: string;
   whose: string;
   phone_number: string;
@@ -126,6 +144,7 @@ export type HistoryAction = "create" | "update" | "delete";
 
 /** Tetikleyicide kaydedilen jsonb snapshot (alanlar DB ile uyumlu). */
 export interface CustomerSnapshot {
+  yil?: number | null;
   random_id?: string | null;
   number?: string;
   type?: string | null;
@@ -147,6 +166,7 @@ export interface CustomerSnapshot {
 
 export interface HistoryEntry {
   id: string;
+  yil?: number | null;
   hayvan_number: string;
   /** Migrasyon sonrası mevcut: composite key'in benzersiz parçası. */
   random_id?: string | null;

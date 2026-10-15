@@ -27,6 +27,7 @@ import {
 import { CheckCircle2, Plus, Trash2 } from "lucide-react";
 import { formatMoneyInputTR, formatPhoneInputTR } from "@/lib/input-format";
 import { formatPrice } from "@/lib/utils";
+import { PastCustomerPicker } from "@/components/past-customer-picker";
 
 const defaultHissedar = {
   whose: "",
@@ -301,6 +302,16 @@ export function BuyukbasEkleForm() {
                     </Button>
                   )}
                 </div>
+
+                <PastCustomerPicker
+                  onSelect={(c) => {
+                    if (c.whose) setValue(hf(index, "whose"), c.whose, { shouldDirty: true });
+                    if (c.phone_number) setValue(hf(index, "phone_number"), formatPhoneInputTR(c.phone_number), { shouldDirty: true });
+                    if (c.address && !showAddress) setValue(hf(index, "address"), c.address, { shouldDirty: true });
+                  }}
+                  className="bg-card/60"
+                />
+
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>👤 Sahip (Müşteri)</Label>
