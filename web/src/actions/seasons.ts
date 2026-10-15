@@ -9,7 +9,6 @@ import {
   BUYUKBAS_TABLE,
   SEZON_TABLE,
   TABLE,
-  type Sezon,
   type SezonDurum,
 } from "@/lib/types";
 import { SEASON_COOKIE } from "@/lib/season";

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { searchPastCustomers, type PastCustomerSuggestion } from "@/actions/seasons";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { UserCheck, Search, Loader2, Sparkles, X } from "lucide-react";
+import { Search, Loader2, Sparkles, X } from "lucide-react";
 import { formatPhoneDisplay } from "@/lib/utils";
 
 interface PastCustomerPickerProps {
