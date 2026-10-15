@@ -21,10 +21,10 @@ export function MobileTopbar({ currentYear, seasons }: MobileTopbarProps) {
     <>
       {/* Topbar — sadece mobilde görünür */}
       <header className="lg:hidden fixed top-0 left-0 right-0 z-40 flex h-14 items-center justify-between border-b border-border bg-sidebar px-3 safe-top">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Menüyü aç" className="h-9 w-9">
+              <Button variant="ghost" size="icon" aria-label="Menüyü aç" className="h-9 w-9 shrink-0">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
@@ -38,7 +38,7 @@ export function MobileTopbar({ currentYear, seasons }: MobileTopbarProps) {
             </SheetContent>
           </Sheet>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2 min-w-0">
             <Image
               src="/logo.jpeg"
               alt="Kurban Yönetim Sistemi"
@@ -46,13 +46,13 @@ export function MobileTopbar({ currentYear, seasons }: MobileTopbarProps) {
               height={26}
               className="h-6 w-6 shrink-0 object-contain rounded"
             />
-            <span className="text-xs font-bold text-sidebar-foreground truncate max-w-[90px] sm:max-w-none">
-              Kurban
+            <span className="text-xs sm:text-sm font-bold text-sidebar-foreground truncate tracking-tight">
+              Kurban Yönetim Sistemi
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 shrink-0">
           {currentYear !== undefined && seasons && seasons.length > 0 && (
             <YearSwitcher currentYear={currentYear} seasons={seasons} compact />
           )}

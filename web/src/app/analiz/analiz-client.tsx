@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import type { FullAnalyticsReport, YearlyMetrics } from "@/lib/analytics";
+import { useState, useMemo } from "react";
+import type { FullAnalyticsReport } from "@/lib/analytics";
 import { formatPhoneDisplay, formatPrice } from "@/lib/utils";
 import { downloadPastDebtsExcel } from "@/lib/excel-export";
 import { Button } from "@/components/ui/button";
@@ -28,8 +28,6 @@ import {
   Calendar,
   Sparkles,
   Search,
-  CheckCircle2,
-  Percent,
 } from "lucide-react";
 
 interface AnalizClientProps {
@@ -39,16 +37,11 @@ interface AnalizClientProps {
 type TabType = "finans" | "operasyon" | "sadakat" | "alacaklar" | "tablo";
 
 export function AnalizClient({ report }: AnalizClientProps) {
-  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>("finans");
 
   // Alacaklar arama filtresi
   const [debtSearch, setDebtSearch] = useState("");
   const [debtYearFilter, setDebtYearFilter] = useState<number | "all">("all");
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const {
     yearlyMetrics,

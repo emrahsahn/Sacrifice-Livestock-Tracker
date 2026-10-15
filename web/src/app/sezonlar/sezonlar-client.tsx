@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Sezon, SezonDurum } from "@/lib/types";
+import type { Sezon } from "@/lib/types";
 import {
   createSeason,
   deleteSeason,
