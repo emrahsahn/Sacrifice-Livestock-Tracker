@@ -13,6 +13,7 @@ import {
 } from "@/lib/types";
 import { computeHisseBirimFiyat } from "@/lib/buyukbas-utils";
 import { normalizePhone } from "@/lib/utils";
+import { assertYearWritable, getSelectedYear } from "@/lib/season";
 
 const TL = new Intl.NumberFormat("tr-TR", {
   minimumFractionDigits: 2,
@@ -26,25 +27,34 @@ function revalidateBuyukbas() {
   revalidatePath("/istatistikler");
   revalidatePath("/sorgula");
   revalidatePath("/ekle");
+  revalidatePath("/sezonlar");
+  revalidatePath("/analiz");
   revalidatePath("/");
 }
 
 async function getUsedShares(
   supabase: Awaited<ReturnType<typeof createClient>>,
   hayvanNumber: string,
-  excludeHissedarId?: string
+  excludeHissedarId?: string,
+  yil?: number
 ): Promise<number> {
-  const { data, error } = await supabase
+  let query = supabase
     .from(BUYUKBAS_HISSEDAR_TABLE)
-    .select("id, alinan_hisse")
+    .select("id, alinan_hisse, yil")
     .eq("hayvan_number", hayvanNumber);
+
+  if (yil !== undefined) {
+    query = query.eq("yil", yil);
+  }
+
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data ?? [])
     .filter((r) => r.id !== excludeHissedarId)
     .reduce((s, r) => s + Number(r.alinan_hisse ?? 0), 0);
 }
 
-export async function createBuyukbasHayvan(formData: unknown) {
+export async function createBuyukbasHayvan(formData: unknown, targetYil?: number) {
   await requireSession();
   const parsed = buyukbasHayvanCreateSchema.safeParse(formData);
   if (!parsed.success) {
@@ -54,7 +64,16 @@ export async function createBuyukbasHayvan(formData: unknown) {
   const data = parsed.data;
   const supabase = await createClient();
 
-  const conflict = await assertNumbersAvailable(supabase, [data.number], "buyukbas");
+  const { year: activeYear } = await getSelectedYear(supabase);
+  const yil = targetYil ?? activeYear;
+
+  try {
+    await assertYearWritable(supabase, yil);
+  } catch (err: unknown) {
+    return { error: err instanceof Error ? err.message : "Sezon kapalı." };
+  }
+
+  const conflict = await assertNumbersAvailable(supabase, [data.number], "buyukbas", undefined, yil);
   if (conflict) return { error: conflict };
 
   const usedShares = data.hissedarlar.reduce((s, h) => s + h.alinan_hisse, 0);
@@ -67,6 +86,7 @@ export async function createBuyukbasHayvan(formData: unknown) {
   const birim = computeHisseBirimFiyat(data.hayvan_fiyati, data.toplam_hisse);
 
   const { error: hayvanErr } = await supabase.from(BUYUKBAS_TABLE).insert({
+    yil,
     number: data.number,
     toplam_hisse: data.toplam_hisse,
     hayvan_fiyati: data.hayvan_fiyati,
@@ -83,7 +103,7 @@ export async function createBuyukbasHayvan(formData: unknown) {
 
   if (hayvanErr) {
     if (/duplicate key|unique constraint|23505/i.test(hayvanErr.message)) {
-      return { error: `Hayvan numarası ${data.number} zaten kayıtlı.` };
+      return { error: `Hayvan numarası ${data.number} bu sezonda zaten kayıtlı.` };
     }
     return { error: hayvanErr.message };
   }
@@ -92,6 +112,7 @@ export async function createBuyukbasHayvan(formData: unknown) {
     const agreed = Math.round(h.alinan_hisse * birim * 100) / 100;
     const price = typeof h.price === "number" && h.price > 0 ? h.price : agreed;
     return {
+      yil,
       hayvan_number: data.number,
       whose: h.whose,
       phone_number: normalizePhone(h.phone_number),
@@ -107,7 +128,11 @@ export async function createBuyukbasHayvan(formData: unknown) {
 
   const { error: hissErr } = await supabase.from(BUYUKBAS_HISSEDAR_TABLE).insert(hissedarRows);
   if (hissErr) {
-    await supabase.from(BUYUKBAS_TABLE).delete().eq("number", data.number);
+    await supabase
+      .from(BUYUKBAS_TABLE)
+      .delete()
+      .eq("number", data.number)
+      .eq("yil", yil);
     return { error: hissErr.message };
   }
 
@@ -126,19 +151,35 @@ export async function addBuyukbasHissedar(
     payment_status?: PaymentStatus;
     address?: string;
     note?: string;
-  }
+  },
+  targetYil?: number
 ) {
   await requireSession();
   const supabase = await createClient();
-  const { data: hayvan, error: hErr } = await supabase
+
+  let findQuery = supabase
     .from(BUYUKBAS_TABLE)
-    .select("toplam_hisse, hisse_birim_fiyat")
-    .eq("number", hayvanNumber)
-    .maybeSingle();
+    .select("toplam_hisse, hisse_birim_fiyat, yil")
+    .eq("number", hayvanNumber);
+
+  if (targetYil !== undefined) {
+    findQuery = findQuery.eq("yil", targetYil);
+  }
+
+  const { data: hayvan, error: hErr } = await findQuery.maybeSingle();
   if (hErr) return { error: hErr.message };
   if (!hayvan) return { error: "Hayvan bulunamadı." };
 
-  const used = await getUsedShares(supabase, hayvanNumber);
+  const yil = targetYil ?? hayvan.yil;
+  if (yil !== undefined) {
+    try {
+      await assertYearWritable(supabase, yil);
+    } catch (err: unknown) {
+      return { error: err instanceof Error ? err.message : "Sezon kapalı." };
+    }
+  }
+
+  const used = await getUsedShares(supabase, hayvanNumber, undefined, yil);
   if (used + hissedar.alinan_hisse > Number(hayvan.toplam_hisse)) {
     return {
       error: `Kalan hisse: ${Number(hayvan.toplam_hisse) - used}. ${hissedar.alinan_hisse} hisse eklenemez.`,
@@ -150,6 +191,7 @@ export async function addBuyukbasHissedar(
   const price = hissedar.price ?? agreed;
 
   const { error } = await supabase.from(BUYUKBAS_HISSEDAR_TABLE).insert({
+    yil: yil ?? 2026,
     hayvan_number: hayvanNumber,
     whose: hissedar.whose ?? "",
     phone_number: normalizePhone(hissedar.phone_number ?? ""),
@@ -169,27 +211,39 @@ export async function addBuyukbasHissedar(
 
 export async function updateBuyukbasHayvan(
   number: string,
-  patch: Record<string, unknown>
+  patch: Record<string, unknown>,
+  targetYil?: number
 ) {
   await requireSession();
   const supabase = await createClient();
   const newNumber = typeof patch.number === "string" ? patch.number.trim() : number;
 
+  let query = supabase.from(BUYUKBAS_TABLE).select("*").eq("number", number);
+  if (targetYil !== undefined) {
+    query = query.eq("yil", targetYil);
+  }
+
+  const { data: existing, error: exErr } = await query.maybeSingle();
+  if (exErr) return { error: exErr.message };
+  if (!existing) return { error: "Hayvan bulunamadı." };
+
+  const yil = targetYil ?? existing.yil;
+  if (yil !== undefined) {
+    try {
+      await assertYearWritable(supabase, yil);
+    } catch (err: unknown) {
+      return { error: err instanceof Error ? err.message : "Sezon kapalı." };
+    }
+  }
+
   if (newNumber !== number) {
     const conflict = await assertNumbersAvailable(supabase, [newNumber], "buyukbas", {
       source: "buyukbas",
       number,
-    });
+      yil,
+    }, yil);
     if (conflict) return { error: conflict };
   }
-
-  const { data: existing, error: exErr } = await supabase
-    .from(BUYUKBAS_TABLE)
-    .select("*")
-    .eq("number", number)
-    .maybeSingle();
-  if (exErr) return { error: exErr.message };
-  if (!existing) return { error: "Hayvan bulunamadı." };
 
   const toplamHisse =
     patch.toplam_hisse !== undefined
@@ -204,7 +258,7 @@ export async function updateBuyukbasHayvan(
     return { error: "Toplam hisse en az 1 olmalıdır." };
   }
 
-  const used = await getUsedShares(supabase, number);
+  const used = await getUsedShares(supabase, number, undefined, yil);
   if (used > toplamHisse) {
     return {
       error: `Toplam hisse ${toplamHisse} olamaz; mevcut hissedar payları ${used}.`,
@@ -221,16 +275,28 @@ export async function updateBuyukbasHayvan(
     hisse_birim_fiyat: birim,
   };
 
-  const { error: upErr } = await supabase
+  let upQuery = supabase
     .from(BUYUKBAS_TABLE)
     .update(hayvanPatch)
     .eq("number", number);
+
+  if (yil !== undefined) {
+    upQuery = upQuery.eq("yil", yil);
+  }
+
+  const { error: upErr } = await upQuery;
   if (upErr) return { error: upErr.message };
 
-  const { data: hissedarlar, error: hErr } = await supabase
+  let hissQuery = supabase
     .from(BUYUKBAS_HISSEDAR_TABLE)
     .select("id, alinan_hisse, price, payment_status, agreed_total")
-    .eq("hayvan_number", number);
+    .eq("hayvan_number", newNumber);
+
+  if (yil !== undefined) {
+    hissQuery = hissQuery.eq("yil", yil);
+  }
+
+  const { data: hissedarlar, error: hErr } = await hissQuery;
   if (hErr) return { error: hErr.message };
 
   for (const h of hissedarlar ?? []) {
@@ -264,11 +330,19 @@ export async function updateBuyukbasHissedar(
   const supabase = await createClient();
   const { data: row, error: rErr } = await supabase
     .from(BUYUKBAS_HISSEDAR_TABLE)
-    .select("hayvan_number, alinan_hisse")
+    .select("hayvan_number, alinan_hisse, yil")
     .eq("id", id)
     .maybeSingle();
   if (rErr) return { error: rErr.message };
   if (!row) return { error: "Hissedar bulunamadı." };
+
+  if (row.yil !== undefined) {
+    try {
+      await assertYearWritable(supabase, row.yil);
+    } catch (err: unknown) {
+      return { error: err instanceof Error ? err.message : "Sezon kapalı." };
+    }
+  }
 
   const finalPatch = { ...patch };
   if (typeof finalPatch.phone_number === "string") {
@@ -277,22 +351,20 @@ export async function updateBuyukbasHissedar(
 
   if (finalPatch.alinan_hisse !== undefined) {
     const newShares = Number(finalPatch.alinan_hisse);
-    const used = await getUsedShares(supabase, row.hayvan_number, id);
-    const { data: hayvan } = await supabase
+    const used = await getUsedShares(supabase, row.hayvan_number, id, row.yil);
+    let hayvanQuery = supabase
       .from(BUYUKBAS_TABLE)
-      .select("toplam_hisse")
-      .eq("number", row.hayvan_number)
-      .maybeSingle();
+      .select("toplam_hisse, hisse_birim_fiyat")
+      .eq("number", row.hayvan_number);
+    if (row.yil !== undefined) {
+      hayvanQuery = hayvanQuery.eq("yil", row.yil);
+    }
+    const { data: hayvan } = await hayvanQuery.maybeSingle();
     const limit = Number(hayvan?.toplam_hisse ?? 0);
     if (used + newShares > limit) {
       return { error: `Kalan hisse: ${limit - used}.` };
     }
-    const { data: h2 } = await supabase
-      .from(BUYUKBAS_TABLE)
-      .select("hisse_birim_fiyat")
-      .eq("number", row.hayvan_number)
-      .maybeSingle();
-    const birim = Number(h2?.hisse_birim_fiyat ?? 0);
+    const birim = Number(hayvan?.hisse_birim_fiyat ?? 0);
     finalPatch.agreed_total = Math.round(newShares * birim * 100) / 100;
   }
 
@@ -321,11 +393,19 @@ export async function applyBuyukbasPartialPayment(
   const supabase = await createClient();
   const { data: row, error: fErr } = await supabase
     .from(BUYUKBAS_HISSEDAR_TABLE)
-    .select("price, agreed_total, payment_status, payment_method")
+    .select("price, agreed_total, payment_status, payment_method, yil")
     .eq("id", hissedarId)
     .maybeSingle();
   if (fErr) return { error: fErr.message };
   if (!row) return { error: "Hissedar bulunamadı." };
+
+  if (row.yil !== undefined) {
+    try {
+      await assertYearWritable(supabase, row.yil);
+    } catch (err: unknown) {
+      return { error: err instanceof Error ? err.message : "Sezon kapalı." };
+    }
+  }
 
   const currentPrice = Math.round(Number(row.price ?? 0) * 100) / 100;
   if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
@@ -379,10 +459,21 @@ export async function applyBuyukbasPartialPayment(
   return { success: true };
 }
 
-export async function deleteBuyukbasHayvan(number: string) {
+export async function deleteBuyukbasHayvan(number: string, targetYil?: number) {
   await requireSession();
   const supabase = await createClient();
-  const { error } = await supabase.from(BUYUKBAS_TABLE).delete().eq("number", number);
+
+  let query = supabase.from(BUYUKBAS_TABLE).delete().eq("number", number);
+  if (targetYil !== undefined) {
+    try {
+      await assertYearWritable(supabase, targetYil);
+    } catch (err: unknown) {
+      return { error: err instanceof Error ? err.message : "Sezon kapalı." };
+    }
+    query = query.eq("yil", targetYil);
+  }
+
+  const { error } = await query;
   if (error) return { error: error.message };
   revalidateBuyukbas();
   return { success: true };
@@ -391,6 +482,21 @@ export async function deleteBuyukbasHayvan(number: string) {
 export async function deleteBuyukbasHissedar(id: string) {
   await requireSession();
   const supabase = await createClient();
+
+  const { data: row } = await supabase
+    .from(BUYUKBAS_HISSEDAR_TABLE)
+    .select("yil")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (row?.yil !== undefined) {
+    try {
+      await assertYearWritable(supabase, row.yil);
+    } catch (err: unknown) {
+      return { error: err instanceof Error ? err.message : "Sezon kapalı." };
+    }
+  }
+
   const { error } = await supabase.from(BUYUKBAS_HISSEDAR_TABLE).delete().eq("id", id);
   if (error) return { error: error.message };
   revalidateBuyukbas();
@@ -435,10 +541,21 @@ export async function importBuyukbasBulk(
       note?: string;
     }>;
     rowIndices: number[];
-  }>
+  }>,
+  targetYil?: number
 ): Promise<BuyukbasBulkImportResult | { error: string }> {
   await requireSession();
   const supabase = await createClient();
+
+  const { year: activeYear } = await getSelectedYear(supabase);
+  const yil = targetYil ?? activeYear;
+
+  try {
+    await assertYearWritable(supabase, yil);
+  } catch (err: unknown) {
+    return { error: err instanceof Error ? err.message : "Sezon kapalı." };
+  }
+
   const skipped: BuyukbasBulkSkippedRow[] = [];
   let insertedAnimals = 0;
   let insertedHissedarlar = 0;
@@ -447,7 +564,7 @@ export async function importBuyukbasBulk(
     const firstRow = group.rowIndices[0] ?? 0;
     const num = group.hayvan.number.trim();
 
-    const conflict = await assertNumbersAvailable(supabase, [num], "buyukbas");
+    const conflict = await assertNumbersAvailable(supabase, [num], "buyukbas", undefined, yil);
     if (conflict) {
       skipped.push({ rowIndex: firstRow, number: num, reason: conflict });
       continue;
@@ -466,6 +583,7 @@ export async function importBuyukbasBulk(
     const birim = computeHisseBirimFiyat(group.hayvan.hayvan_fiyati, group.hayvan.toplam_hisse);
 
     const { error: hErr } = await supabase.from(BUYUKBAS_TABLE).insert({
+      yil,
       number: num,
       toplam_hisse: group.hayvan.toplam_hisse,
       hayvan_fiyati: group.hayvan.hayvan_fiyati,
@@ -489,6 +607,7 @@ export async function importBuyukbasBulk(
       const agreed = Math.round(h.alinan_hisse * birim * 100) / 100;
       const price = h.price ?? agreed;
       return {
+        yil,
         hayvan_number: num,
         whose: h.whose ?? "",
         phone_number: normalizePhone(h.phone_number ?? ""),
@@ -504,7 +623,11 @@ export async function importBuyukbasBulk(
 
     const { error: hsErr } = await supabase.from(BUYUKBAS_HISSEDAR_TABLE).insert(rows);
     if (hsErr) {
-      await supabase.from(BUYUKBAS_TABLE).delete().eq("number", num);
+      await supabase
+        .from(BUYUKBAS_TABLE)
+        .delete()
+        .eq("number", num)
+        .eq("yil", yil);
       skipped.push({ rowIndex: firstRow, number: num, reason: hsErr.message });
       continue;
     }

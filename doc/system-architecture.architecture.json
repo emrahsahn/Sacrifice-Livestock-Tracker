@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Kurbanlık Takip Sistemi Mimarisi",
+    "subtitle": "Next.js 16 App Router · Server Actions · Supabase PostgreSQL · Yıllık Sezon İzolasyonu",
+    "output": "doc/system-architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Kullanıcı",
+      "sublabel": "Masaüstü & Mobil Tarayıcı",
+      "pos": [40, 260],
+      "size": [130, 60]
+    },
+    {
+      "id": "proxy",
+      "type": "security",
+      "label": "Proxy / Middleware",
+      "sublabel": "Cookie Oturum Doğrulama",
+      "pos": [270, 260],
+      "size": [140, 60],
+      "tag": "Next.js 16"
+    },
+    {
+      "id": "web_ui",
+      "type": "frontend",
+      "label": "Next.js App Router",
+      "sublabel": "Dashboard, /musteriler, /sezonlar, /analiz",
+      "pos": [520, 260],
+      "size": [160, 60]
+    },
+    {
+      "id": "actions",
+      "type": "backend",
+      "label": "Server Actions",
+      "sublabel": "customers, buyukbas, seasons, search",
+      "pos": [780, 260],
+      "size": [150, 60],
+      "tag": "Server-side"
+    },
+    {
+      "id": "season_guard",
+      "type": "security",
+      "label": "Sezon Yöneticisi",
+      "sublabel": "ks_year çerezi & assertYearWritable",
+      "pos": [780, 130],
+      "size": [150, 60],
+      "tag": "Kapalı Sezon Koruması"
+    },
+    {
+      "id": "analytics",
+      "type": "backend",
+      "label": "Analitik Motoru",
+      "sublabel": "Çok Yıllı Metrikler & Recharts",
+      "pos": [520, 410],
+      "size": [160, 60]
+    },
+    {
+      "id": "excel",
+      "type": "messagebus",
+      "label": "Excel Motoru",
+      "sublabel": "SheetJS XLSX içe/dışa aktarım",
+      "pos": [780, 410],
+      "size": [150, 60]
+    },
+    {
+      "id": "supabase_client",
+      "type": "cloud",
+      "label": "Supabase Client",
+      "sublabel": "Tip Korumalı SQL Sorguları",
+      "pos": [1050, 260],
+      "size": [140, 60]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL DB",
+      "sublabel": "Supabase Bağımsız Veritabanı",
+      "pos": [1300, 260],
+      "size": [140, 60],
+      "tag": "RLS Aktif"
+    },
+    {
+      "id": "db_triggers",
+      "type": "security",
+      "label": "DB Tetikleyicileri",
+      "sublabel": "check_sezon_acik & log_history",
+      "pos": [1300, 130],
+      "size": [140, 60],
+      "tag": "Fail-safe Kilit"
+    },
+    {
+      "id": "history_table",
+      "type": "database",
+      "label": "Audit Tarihçe",
+      "sublabel": "kurbanlik_hesap_history",
+      "pos": [1300, 410],
+      "size": [140, 60]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Next.js Web Uygulaması (Vercel / Node.js)",
+      "wraps": ["proxy", "web_ui", "actions", "season_guard", "analytics", "excel", "supabase_client"]
+    },
+    {
+      "kind": "region",
+      "label": "Supabase Altyapısı (PostgreSQL 15+)",
+      "wraps": ["postgres", "db_triggers", "history_table"]
+    }
+  ],
+  "connections": [
+    {
+      "from": "user",
+      "to": "proxy",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "from": "proxy",
+      "to": "web_ui",
+      "label": "Yetkili Oturum",
+      "variant": "emphasis"
+    },
+    {
+      "from": "web_ui",
+      "to": "actions",
+      "label": "Form & RPC",
+      "variant": "emphasis"
+    },
+    {
+      "from": "web_ui",
+      "to": "analytics",
+      "label": "Rapor Çağrısı",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "from": "actions",
+      "to": "season_guard",
+      "label": "Yazma Denetimi",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "from": "actions",
+      "to": "excel",
+      "label": "Toplu İçe Aktarım",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "from": "actions",
+      "to": "supabase_client",
+      "label": "Sorgu / Mutasyon",
+      "variant": "emphasis"
+    },
+    {
+      "from": "supabase_client",
+      "to": "postgres",
+      "label": "SQL Bağlantısı",
+      "variant": "emphasis"
+    },
+    {
+      "from": "postgres",
+      "to": "db_triggers",
+      "label": "Kilit & Audit",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "from": "db_triggers",
+      "to": "history_table",
+      "label": "Otomatik Snapshot",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "right",
+      "via": [[1480, 160], [1480, 440]]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Kullanıcı Arayüzü & İstemci Katmanı",
+      "items": [
+        "Next.js 16 App Router ve React 19 ile yüksek performans",
+        "Tailwind CSS v4 + shadcn/ui ile mobil uyumlu modern arayüz",
+        "Recharts ile zenginleştirilmiş çok yıllı karşılaştırma grafikleri"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Yıllık Sezon & Çoklu Yıl Yönetimi",
+      "items": [
+        "ks_year çerezi üzerinden anında aktif sezon geçişi",
+        "Geçmiş yıllardan müşteri bilgilerini tek tıkla otomatik doldurma",
+        "Kapalı sezonlarda otomatik salt-okunur (arşiv) koruması"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Veri Güvenliği & Audit Mimarisi",
+      "items": [
+        "Veritabanı seviyesinde check_sezon_acik_trigger() koruması",
+        "Tüm küçükbaş güncellemeleri kurbanlik_hesap_history tablosunda anlık snapshotlanır",
+        "Row Level Security (RLS) politikaları ile izole veri erişimi"
+      ]
+    }
+  ]
+}

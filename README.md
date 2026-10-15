@@ -36,10 +36,19 @@ Eski Streamlit/Python tabanlı yapıdan tamamen ayrılarak **Next.js + Supabase*
 - Excel dosyasından toplu küçükbaş ve büyükbaş içe aktarma
 - Hatalı satırlar için atlama ve raporlama
 
-### İstatistikler
+### İstatistikler ve Çok Yıllı Analiz
 
 - Küçükbaş ve büyükbaş birleşik özet
 - Grup kategorisine göre hayvan sayısı ve tutar dağılımı
+- **Çok Yıllı Analiz (`/analiz`)**: Yıllar arası ciro, tahsilat, doluluk oranları ve müşteri sadakat trendleri (Recharts grafikler)
+- **Borçlu Listesi Excel Dışa Aktarma**: Çoklu yıl analiz sekmesinde filtreli borçlu dökümü
+
+### Yıllık Sezon Yönetimi (`/sezonlar`)
+
+- **Yıl İzolasyonu**: Her küçükbaş ve büyükbaş kaydı ilgili `sezon_id` ile izole edilir
+- **Hızlı Sezon Geçişi**: Üst menüden tek tıkla geçmiş veya aktif yıla geçiş (çerez tabanlı `ks_year`)
+- **Sezon Kilitleme/Arşivleme**: Kapatılan sezonlar PostgreSQL trigger seviyesinde yazmaya karşı korunur
+- **Geçmiş Müşteri Otomatik Tamamlama**: Yeni yılda müşteri adı yazılırken önceki yılların kayıtlarından otomatik öneri
 
 ---
 
@@ -56,19 +65,90 @@ Eski Streamlit/Python tabanlı yapıdan tamamen ayrılarak **Next.js + Supabase*
 
 ---
 
+## Sistem Mimarisi & Archify Görselleştirmesi
+
+Sistemin uçtan uca mimarisi, [Archify](https://github.com/tt-a1i/archify) formatında modellenmiş ve interaktif HTML raporu olarak derlenmiştir.
+
+### 🌐 İnteraktif Mimariyi Açma
+Sistemin interaktif düğümlerini, katmanlarını, veri akışını ve bileşen detaylarını incelemek için oluşturulan HTML çıktısını doğrudan tarayıcınızda açabilirsiniz:
+- **İnteraktif HTML Raporu**: [`doc/system-architecture.html`](doc/system-architecture.html)
+- **Archify JSON Tanımı**: [`doc/system-architecture.architecture.json`](doc/system-architecture.architecture.json)
+
+Tarayıcıda açmak için terminal komutu:
+```powershell
+# Windows
+start doc/system-architecture.html
+
+# macOS
+open doc/system-architecture.html
+
+# Linux
+xdg-open doc/system-architecture.html
+```
+
+Mimaride değişiklik yapıldığında yeniden derlemek için:
+```bash
+archify render architecture doc/system-architecture.architecture.json doc/system-architecture.html
+```
+
+### 📐 Mimari Şeması (Mermaid)
+
+```mermaid
+graph LR
+    subgraph ClientLayer["İstemci Katmanı"]
+        User["Kullanıcı / Admin Tarayıcı<br/>(Desktop & Mobil)"]
+    end
+
+    subgraph NetworkLayer["Ağ & Ağ Geçidi"]
+        Proxy["Next.js Reverse Proxy & Routing<br/>(Cookie: ks_year & auth_token)"]
+    end
+
+    subgraph AppLayer["Uygulama Katmanı (Next.js 16)"]
+        WebUI["Web UI (React 19, Tailwind v4)<br/>- /dashboard, /musteriler, /sorgula<br/>- /sezonlar (Sezon Yönetimi)<br/>- /analiz (Çok Yıllı Recharts Grafikleri)"]
+        Actions["Server Actions<br/>- sezonActions (Aktif yıl değişimi, arşiv kilidi)<br/>- customerActions (Küçükbaş CRUD)<br/>- buyukbasActions (Hissedar & hayvan)<br/>- analyticsActions (Çok yıllı metrikler)"]
+    end
+
+    subgraph DataLayer["Veri Erişim Katmanı"]
+        Client["Supabase TypeScript SDK<br/>(Service Role & Anon Client)"]
+    end
+
+    subgraph DBLayer["Veritabanı Katmanı (Supabase PostgreSQL)"]
+        Seasons["kurban_sezonlari<br/>(Yıl, durum, kilit, varsayılan)"]
+        SmallCattle["kurbanlık_hesap & history<br/>(sezon_id ile izole)"]
+        BigCattle["buyukbas_hayvan & hissedar<br/>(sezon_id ile izole)"]
+        LockTriggers["PostgreSQL Trigger'ları<br/>(Arşivlenmiş sezon koruması)"]
+    end
+
+    User -->|HTTPS İstekleri| Proxy
+    Proxy -->|Oturum & Yıl Bilgisi| WebUI
+    WebUI -->|Form Gönderimleri & Eylemler| Actions
+    Actions -->|Yetkili Veritabanı Sorguları| Client
+    Client -->|SQL Sorguları & Filtreler| Seasons
+    Client -->|sezon_id Filtreli Sorgular| SmallCattle
+    Client -->|sezon_id Filtreli Sorgular| BigCattle
+    Seasons -.->|Kilit Kontrolü| LockTriggers
+    LockTriggers -.->|Engelleme| SmallCattle
+    LockTriggers -.->|Engelleme| BigCattle
+```
+
+---
+
 ## Proje yapısı
 
 ```text
 new_query_system/
+├── doc/                    # Mimari ve dokümantasyon
+│   ├── system-architecture.architecture.json  # Archify mimari tanımı
+│   └── system-architecture.html               # Archify interaktif mimari görselleştirmesi
 ├── web/                    # Next.js uygulaması (aktif kod tabanı)
 │   ├── src/
-│   │   ├── app/            # Sayfalar (dashboard, müşteriler, sorgula, ekle, vb.)
-│   │   ├── actions/        # Server Actions (auth, müşteri, büyükbaş)
-│   │   ├── components/     # UI bileşenleri
+│   │   ├── app/            # Sayfalar (dashboard, müşteriler, sezonlar, analiz, vb.)
+│   │   ├── actions/        # Server Actions (auth, müşteri, büyükbaş, sezonlar, analiz)
+│   │   ├── components/     # UI bileşenleri (sezon seçici, grafikler, formlar)
 │   │   └── lib/            # Supabase, validasyon, yardımcılar
 │   └── public/             # Statik dosyalar
 ├── supabase/
-│   ├── migrations/         # Veritabanı migration dosyaları
+│   ├── migrations/         # Veritabanı migration dosyaları (sezon tabloları ve tetikleyiciler)
 │   └── seed.sql            # Örnek test verisi
 ├── data/                   # Örnek CSV ve görseller
 └── package.json            # Kök npm script'leri (web/ yönlendirmesi)
@@ -222,11 +302,13 @@ Supabase ücretsiz planı 7 gün işlem olmazsa projeyi duraklatır. İki bağı
 |------|----------|
 | `/` | Dashboard ve hızlı erişim menüsü |
 | `/musteriler` | Müşteri listesi ve dışa aktarma |
-| `/sorgula` | Küçükbaş ve büyükbaş arama |
+| `/sorgula` | Küçükbaş ve büyükbaş arama (otomatik müşteri tamamlama) |
 | `/ekle` | Tekil kayıt, büyükbaş ve Excel toplu içe aktarma |
-| `/guncelle` | Kayıt güncelleme |
-| `/sil` | Kayıt silme |
+| `/guncelle` | Kayıt güncelleme (arşiv kilit kontrolü ile) |
+| `/sil` | Kayıt silme (arşiv kilit kontrolü ile) |
 | `/istatistikler` | Grup ve ödeme istatistikleri |
+| `/sezonlar` | Yıllık sezon yönetimi (yeni sezon tanımlama, kilitleme/arşivleme, varsayılan seçimi) |
+| `/analiz` | Çok yıllı analitik (yıllar arası ciro, doluluk, tahsilat, sadakat ve borçlu Excel çıktısı) |
 | `/login` | Admin girişi |
 
 ---
@@ -235,9 +317,10 @@ Supabase ücretsiz planı 7 gün işlem olmazsa projeyi duraklatır. İki bağı
 
 | Tablo | Açıklama |
 |-------|----------|
-| `kurbanlık_hesap` | Küçükbaş müşteri kayıtları |
+| `kurban_sezonlari` | Yıllık kurban sezonları (yıl, etiket, durum, arşiv kilidi, varsayılan) |
+| `kurbanlık_hesap` | Küçükbaş müşteri kayıtları (`sezon_id` bağlantılı) |
 | `kurbanlik_hesap_history` | Küçükbaş değişiklik geçmişi |
-| `buyukbas_hayvan` | Büyükbaş hayvan kayıtları |
+| `buyukbas_hayvan` | Büyükbaş hayvan kayıtları (`sezon_id` bağlantılı) |
 | `buyukbas_hissedar` | Büyükbaş hissedar kayıtları |
 
 ---

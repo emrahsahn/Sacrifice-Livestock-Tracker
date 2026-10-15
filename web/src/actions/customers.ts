@@ -10,6 +10,7 @@ import {
 } from "@/lib/animal-number-check";
 import { TABLE, type CustomerKey } from "@/lib/types";
 import { generateRandomId, normalizePhone, parseAnimalNumbers } from "@/lib/utils";
+import { assertYearWritable, getSelectedYear } from "@/lib/season";
 
 function isMissingAgreedTotalDbError(message: string): boolean {
   return /agreed_total/i.test(message) && /does not exist|column/i.test(message);
@@ -19,22 +20,20 @@ function isDuplicatePkError(message: string): boolean {
   return /duplicate key/i.test(message) || /unique constraint/i.test(message) || /23505/.test(message);
 }
 
-// Composite key (random_id + number) sorgu zincirleri inline olarak
-// kullanılır; çünkü generic bir helper ile sarılınca Supabase'in derin generic
-// chain tipi TS2589 (excessively deep) hatası verir.
-
 function revalidateAll() {
   revalidatePath("/musteriler");
   revalidatePath("/guncelle");
   revalidatePath("/sil");
   revalidatePath("/istatistikler");
   revalidatePath("/sorgula");
+  revalidatePath("/sezonlar");
+  revalidatePath("/analiz");
   revalidatePath("/");
 }
 
 // ─── Tekil ekleme ──────────────────────────────────────────────────────────────
 
-export async function addCustomer(formData: unknown) {
+export async function addCustomer(formData: unknown, targetYil?: number) {
   await requireSession();
   const parsed = customerSchema.safeParse(formData);
   if (!parsed.success) {
@@ -44,20 +43,29 @@ export async function addCustomer(formData: unknown) {
   const data = parsed.data;
   const supabase = await createClient();
 
+  const { year: activeYear } = await getSelectedYear(supabase);
+  const yil = targetYil ?? activeYear;
+
+  try {
+    await assertYearWritable(supabase, yil);
+  } catch (err: unknown) {
+    return { error: err instanceof Error ? err.message : "Sezon kapalı." };
+  }
+
   const numConflict = await assertNumbersAvailable(
     supabase,
     tokensFromKucukbasNumber(data.number),
-    "kucukbas"
+    "kucukbas",
+    undefined,
+    yil
   );
   if (numConflict) return { error: numConflict };
 
-  // Telefon opsiyonel: boşsa "" olarak saklanır. Dolu girildiyse normalize edilmiş
-  // 11 haneli formatı bekleriz (zod schema kontrolü zaten yapıldı).
   const phone = normalizePhone(data.phone_number);
-
   const random_id = generateRandomId();
   const initialPrice = Number(data.price) || 0;
   const row = {
+    yil,
     random_id,
     number: data.number,
     type: data.type,
@@ -109,7 +117,8 @@ export interface BulkImportResult {
 }
 
 export async function addCustomersBulk(
-  rows: unknown[]
+  rows: unknown[],
+  targetYil?: number
 ): Promise<BulkImportResult | { error: string }> {
   await requireSession();
   if (!Array.isArray(rows) || rows.length === 0) {
@@ -117,6 +126,15 @@ export async function addCustomersBulk(
   }
 
   const supabase = await createClient();
+
+  const { year: activeYear } = await getSelectedYear(supabase);
+  const yil = targetYil ?? activeYear;
+
+  try {
+    await assertYearWritable(supabase, yil);
+  } catch (err: unknown) {
+    return { error: err instanceof Error ? err.message : "Sezon kapalı." };
+  }
 
   const toInsert: object[] = [];
   const skipped: BulkSkippedRow[] = [];
@@ -141,19 +159,20 @@ export async function addCustomersBulk(
     const numConflict = await assertNumbersAvailable(
       supabase,
       tokensFromKucukbasNumber(data.number),
-      "kucukbas"
+      "kucukbas",
+      undefined,
+      yil
     );
     if (numConflict) {
       skipped.push({ rowIndex: i, number: data.number, reason: numConflict });
       continue;
     }
 
-    // Telefon opsiyonel: boş veya geçersizse boş string saklanır, satır atlanmaz.
     const phone = normalizePhone(data.phone_number);
-
     const initialPrice = Number(data.price) || 0;
 
     toInsert.push({
+      yil,
       random_id: generateRandomId(),
       number: data.number,
       type: data.type,
@@ -216,29 +235,39 @@ export async function applyPartialPayment(
   }
 
   const supabase = await createClient();
+
+  let findQuery = supabase
+    .from(TABLE)
+    .select("number, price, agreed_total, payment_status, payment_method, yil")
+    .eq("random_id", key.random_id)
+    .eq("number", key.number);
+
+  if (key.yil !== undefined) {
+    findQuery = findQuery.eq("yil", key.yil);
+  }
+
   let row: {
     number?: string;
     price?: unknown;
     agreed_total?: unknown;
     payment_status?: unknown;
     payment_method?: unknown;
+    yil?: number;
   } | null = null;
   let fetchErr: { message: string } | null = null;
 
-  const fullFetch = await supabase
-    .from(TABLE)
-    .select("number, price, agreed_total, payment_status, payment_method")
-    .eq("random_id", key.random_id)
-    .eq("number", key.number)
-    .maybeSingle();
+  const fullFetch = await findQuery.maybeSingle();
 
   if (fullFetch.error && isMissingAgreedTotalDbError(fullFetch.error.message)) {
-    const legacyFetch = await supabase
+    let legacyQuery = supabase
       .from(TABLE)
-      .select("number, price, payment_status, payment_method")
+      .select("number, price, payment_status, payment_method, yil")
       .eq("random_id", key.random_id)
-      .eq("number", key.number)
-      .maybeSingle();
+      .eq("number", key.number);
+    if (key.yil !== undefined) {
+      legacyQuery = legacyQuery.eq("yil", key.yil);
+    }
+    const legacyFetch = await legacyQuery.maybeSingle();
     row = legacyFetch.data;
     fetchErr = legacyFetch.error;
   } else {
@@ -248,6 +277,15 @@ export async function applyPartialPayment(
 
   if (fetchErr) return { error: fetchErr.message };
   if (!row) return { error: "Kayıt bulunamadı." };
+
+  const recordYil = row.yil ?? key.yil;
+  if (recordYil !== undefined) {
+    try {
+      await assertYearWritable(supabase, recordYil);
+    } catch (err: unknown) {
+      return { error: err instanceof Error ? err.message : "Sezon kapalı." };
+    }
+  }
 
   const currentPrice = Math.round(Number(row.price ?? 0) * 100) / 100;
   if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
@@ -270,7 +308,7 @@ export async function applyPartialPayment(
   const paidFmt = TL.format(paid);
   const remainingFmt = TL.format(Math.max(0, remaining));
   const autoNote = `${paidFmt} ₺ ödendi; kalan borç ${remainingFmt} ₺`;
-  
+
   const currentPaymentMethod = String(row.payment_method || "");
   const separatorIdx = currentPaymentMethod.indexOf(" | ");
   let previousAutoNote = "";
@@ -281,7 +319,7 @@ export async function applyPartialPayment(
   } else {
     previousAutoNote = currentPaymentMethod.slice(separatorIdx + 3);
   }
-  
+
   const combinedAutoNote = previousAutoNote.trim() ? `${previousAutoNote.trim()}\n${autoNote}` : autoNote;
   const paymentMethod = manualNote ? `${manualNote.trim()} | ${combinedAutoNote}` : ` | ${combinedAutoNote}`;
 
@@ -295,20 +333,30 @@ export async function applyPartialPayment(
     agreed_total: nextAgreed,
   };
 
-  let { error } = await supabase
+  let updateQuery = supabase
     .from(TABLE)
     .update(patch)
     .eq("random_id", key.random_id)
     .eq("number", key.number);
 
+  if (recordYil !== undefined) {
+    updateQuery = updateQuery.eq("yil", recordYil);
+  }
+
+  let { error } = await updateQuery;
+
   if (error && isMissingAgreedTotalDbError(error.message)) {
     const { agreed_total: _a, ...withoutAgreed } = patch;
     void _a;
-    ({ error } = await supabase
+    let fallbackUpdate = supabase
       .from(TABLE)
       .update(withoutAgreed)
       .eq("random_id", key.random_id)
-      .eq("number", key.number));
+      .eq("number", key.number);
+    if (recordYil !== undefined) {
+      fallbackUpdate = fallbackUpdate.eq("yil", recordYil);
+    }
+    ({ error } = await fallbackUpdate);
   }
 
   if (error) return { error: error.message };
@@ -326,6 +374,14 @@ export async function updateCustomerFields(
   await requireSession();
   const supabase = await createClient();
 
+  if (key.yil !== undefined) {
+    try {
+      await assertYearWritable(supabase, key.yil);
+    } catch (err: unknown) {
+      return { error: err instanceof Error ? err.message : "Sezon kapalı." };
+    }
+  }
+
   const patch: Record<string, unknown> = { ...updates };
 
   if (typeof patch.number === "string") {
@@ -334,7 +390,8 @@ export async function updateCustomerFields(
       supabase,
       tokensFromKucukbasNumber(normalized),
       "kucukbas",
-      { source: "kucukbas", random_id: key.random_id, number: key.number }
+      { source: "kucukbas", random_id: key.random_id, number: key.number, yil: key.yil },
+      key.yil
     );
     if (numConflict) return { error: numConflict };
     patch.number = normalized;
@@ -353,11 +410,17 @@ export async function updateCustomerFields(
     }
   }
 
-  const { error } = await supabase
+  let query = supabase
     .from(TABLE)
     .update(patch)
     .eq("random_id", key.random_id)
     .eq("number", key.number);
+
+  if (key.yil !== undefined) {
+    query = query.eq("yil", key.yil);
+  }
+
+  const { error } = await query;
 
   if (error) {
     if (isDuplicatePkError(error.message)) {
@@ -379,6 +442,14 @@ export async function updateCustomerField(
 ) {
   await requireSession();
   const supabase = await createClient();
+
+  if (key.yil !== undefined) {
+    try {
+      await assertYearWritable(supabase, key.yil);
+    } catch (err: unknown) {
+      return { error: err instanceof Error ? err.message : "Sezon kapalı." };
+    }
+  }
 
   let finalValue: string | number = value;
   if (field === "price") {
@@ -412,16 +483,23 @@ export async function updateCustomerField(
       supabase,
       tokensFromKucukbasNumber(String(finalValue)),
       "kucukbas",
-      { source: "kucukbas", random_id: key.random_id, number: key.number }
+      { source: "kucukbas", random_id: key.random_id, number: key.number, yil: key.yil },
+      key.yil
     );
     if (numConflict) return { error: numConflict };
   }
 
-  const { error } = await supabase
+  let query = supabase
     .from(TABLE)
     .update({ [field]: finalValue })
     .eq("random_id", key.random_id)
     .eq("number", key.number);
+
+  if (key.yil !== undefined) {
+    query = query.eq("yil", key.yil);
+  }
+
+  const { error } = await query;
 
   if (error) {
     if (isDuplicatePkError(error.message)) {
@@ -439,11 +517,26 @@ export async function updateCustomerField(
 export async function deleteCustomer(key: CustomerKey) {
   await requireSession();
   const supabase = await createClient();
-  const { error } = await supabase
+
+  if (key.yil !== undefined) {
+    try {
+      await assertYearWritable(supabase, key.yil);
+    } catch (err: unknown) {
+      return { error: err instanceof Error ? err.message : "Sezon kapalı." };
+    }
+  }
+
+  let query = supabase
     .from(TABLE)
     .delete()
     .eq("random_id", key.random_id)
     .eq("number", key.number);
+
+  if (key.yil !== undefined) {
+    query = query.eq("yil", key.yil);
+  }
+
+  const { error } = await query;
   if (error) return { error: error.message };
 
   revalidateAll();
